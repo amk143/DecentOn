@@ -1,17 +1,36 @@
 // Check whether current page is inside (visual) builder or not
 var isBuilder = 'object' === typeof window.ET_Builder;
-
+ 
 /*! ET frontend-builder-scripts.js */
 (function($){
 	var $et_window = $(window);
 	var $et_top_window = isBuilder ? window.top.jQuery(window.top) : $(window);
+	var isTB = $('body').hasClass('et-tb');
 	var isBFB = $('body').hasClass('et-bfb');
 	var isVB = isBuilder && !isBFB;
+	var topWindow = isBuilder ? window.top : window;
+
 	var isScrollOnAppWindow = function() {
 		return isVB && ($('html').is('.et-fb-preview--wireframe') || $('html').is('.et-fb-preview--desktop'));
 	};
+
 	var isBuilderModeZoom = function() {
 		return isBuilder && $('html').is('.et-fb-preview--zoom');
+	};
+
+	var isInsideVB = function ($node) {
+		return $node.closest('#et-fb-app').length > 0;
+	};
+
+	var getInsideVB = function ($node) {
+		return $('#et-fb-app').find($node);
+	};
+
+	var getOutsideVB = function ($node) {
+		if (typeof $node === 'string') {
+			$node = $($node);
+		}
+		return $node.not('#et-fb-app *');
 	};
 
 	window.et_load_event_fired   = false;
@@ -39,10 +58,32 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 		return $found;
 	};
 
-	window.et_pb_init_modules = function() {
-		isBFB     = $( 'body' ).hasClass( 'et-bfb' );
-		isVB      = isBuilder && !isBFB;
+	/*
+	 * Star-based rating UI.
+	 * @see: WooCommerce's woocommerce/assets/js/frontend/single-product.js file
+	 */
+	window.et_pb_init_woo_star_rating = function($rating_selector) {
+		var $rating_parent  = $rating_selector.closest('div');
+		var $existing_stars = $rating_parent.find('p.stars');
 
+		if ($existing_stars.length > 0) {
+			$existing_stars.remove();
+		}
+
+		$rating_selector.hide().before(
+			'<p class="stars">\
+				<span>\
+					<a class="star-1" href="#">1</a>\
+					<a class="star-2" href="#">2</a>\
+					<a class="star-3" href="#">3</a>\
+					<a class="star-4" href="#">4</a>\
+					<a class="star-5" href="#">5</a>\
+				</span>\
+			</p>'
+		);
+	};
+
+	window.et_pb_init_modules = function() {
 		$.et_pb_simple_slider = function(el, options) {
 			var settings = $.extend( {
 				slide         			: '.et-slide',				 	// slide class
@@ -65,14 +106,15 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				slideshow_speed			: 7000,							// automattic animation speed
 				show_progress_bar		: false,							// show progress bar if automattic animation is active
 				tabs_animation			: false,
-				use_carousel			: false
+				use_carousel			: false,
+				active_slide			: 0
 			}, options );
 
 			var $et_slider 			= $(el),
 				$et_slide			= $et_slider.closest_descendent( settings.slide ),
 				et_slides_number	= $et_slide.length,
 				et_fade_speed		= settings.fade_speed,
-				et_active_slide		= 0,
+				et_active_slide		= settings.active_slide,
 				$et_slider_arrows,
 				$et_slider_prev,
 				$et_slider_next,
@@ -86,6 +128,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				$et_pb_container = $et_slider.find( '.et_pb_container' ),
 				et_pb_container_width = $et_pb_container.width(),
 				is_post_slider = $et_slider.hasClass( 'et_pb_post_slider' ),
+				et_slider_breakpoint = '',
 				stop_slider = false;
 
 				$et_slider.et_animation_running = false;
@@ -93,6 +136,8 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				$.data(el, "et_pb_simple_slider", $et_slider);
 
 				$et_slide.eq(0).addClass( 'et-pb-active-slide' );
+
+				$et_slider.attr('data-active-slide', $et_slide.data('slide-id'));
 
 				if ( ! settings.tabs_animation ) {
 					if ( !$et_slider.hasClass('et_pb_bg_layout_dark') && !$et_slider.hasClass('et_pb_bg_layout_light') ) {
@@ -177,8 +222,6 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						return false;
 					} );
 				}
-
-				et_maybe_set_controls_color( $et_slide.eq(0) );
 
 				if ( settings.use_carousel && et_slides_number > 1 ) {
 					for ( var i = 1; i <= et_slides_number; i++ ) {
@@ -280,7 +323,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 					// Removing DOM that was added by slider
 					$et_slider.find('.et-pb-slider-arrows, .et-pb-controllers').remove();
-					$et_slider.siblings('.et_pb_carousel').remove();
+					$et_slider.siblings('.et_pb_carousel, .et-pb-controllers').remove();
 
 					// Remove references
 					$et_slider.removeData( 'et_pb_simple_slider' );
@@ -341,34 +384,6 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					return 'et_pb_bg_layout_dark';
 				}
 
-				function et_maybe_set_controls_color( $slide ) {
-					var next_slide_dot_color,
-						$arrows,
-						arrows_color;
-
-					if ( typeof $et_slider_controls !== 'undefined' && $et_slider_controls.length ) {
-						next_slide_dot_color = $slide.attr( 'data-dots_color' ) || '';
-
-						if ( next_slide_dot_color !== '' ) {
-							$et_slider_controls.attr( 'style', 'background-color: ' + hex_to_rgba( next_slide_dot_color, '0.3' ) + ';' );
-							$et_slider_controls.filter( '.et-pb-active-control' ).attr( 'style', 'background-color: ' + hex_to_rgba( next_slide_dot_color ) + '!important;' );
-						} else {
-							$et_slider_controls.removeAttr( 'style' );
-						}
-					}
-
-					if ( typeof $et_slider_arrows !== 'undefined' && $et_slider_arrows.length ) {
-						$arrows      = $et_slider_arrows.find( 'a' );
-						arrows_color = $slide.attr( 'data-arrows_color' ) || '';
-
-						if ( arrows_color !== '' ) {
-							$arrows.attr( 'style', 'color: ' + arrows_color + '!important;' );
-						} else {
-							$arrows.css( 'color', 'inherit' );
-						}
-					}
-				}
-
 				// fix the appearance of some modules inside the post slider
 				function et_fix_builder_content() {
 					if ( is_post_slider ) {
@@ -416,25 +431,27 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					et_fix_slider_height( $et_slider );
 				} );
 
-				$et_slider.et_slider_move_to = function ( direction ) {
-					var $active_slide = $et_slide.eq( et_active_slide );
+				$et_slider.et_slider_move_to = function (direction) {
+					$et_slide = $et_slider.closest_descendent(settings.slide);
+					var $active_slide = $et_slide.eq(et_active_slide);
 
 					$et_slider.et_animation_running = true;
 
-					$et_slider.removeClass('et_slide_transition_to_next et_slide_transition_to_previous').addClass('et_slide_transition_to_' + direction );
+					$et_slider.removeClass('et_slide_transition_to_next et_slide_transition_to_previous').addClass('et_slide_transition_to_' + direction);
 
 					$et_slider.find('.et-pb-moved-slide').removeClass('et-pb-moved-slide');
 
-					if ( direction == 'next' || direction == 'previous' ){
+					if (direction === 'next' || direction === 'previous'){
 
-						if ( direction == 'next' )
-							et_active_slide = ( et_active_slide + 1 ) < et_slides_number ? et_active_slide + 1 : 0;
-						else
-							et_active_slide = ( et_active_slide - 1 ) >= 0 ? et_active_slide - 1 : et_slides_number - 1;
+						if (direction === 'next') {
+							et_active_slide = (et_active_slide + 1) < et_slides_number ? et_active_slide + 1 : 0;
+						} else {
+							et_active_slide = (et_active_slide - 1) >= 0 ? et_active_slide - 1 : et_slides_number - 1;
+						}
 
 					} else {
 
-						if ( et_active_slide == direction ) {
+						if (et_active_slide === direction) {
 							$et_slider.et_animation_running = false;
 							return;
 						}
@@ -443,11 +460,13 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 					}
 
+					$et_slider.attr('data-active-slide', $et_slide.eq( et_active_slide ).data('slide-id'));
+
 					if (typeof et_slider_timer !== 'undefined') {
 						clearTimeout(et_slider_timer);
 					}
 
-					var $next_slide	= $et_slide.eq( et_active_slide );
+					var $next_slide	= $et_slide.eq(et_active_slide);
 
 					$et_slider.trigger('slide', {current: $active_slide, next: $next_slide});
 
@@ -510,8 +529,6 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						$et_slider_carousel_controls.removeClass( settings.control_active_class ).eq( et_active_slide ).addClass( settings.control_active_class );
 
 					if ( ! settings.tabs_animation ) {
-						et_maybe_set_controls_color( $next_slide );
-
 						$next_slide.animate( { opacity : 1 }, et_fade_speed );
 						$active_slide.addClass( 'et_slide_transition' ).css( { 'display' : 'list-item', 'opacity' : 1 } ).animate( { opacity : 0 }, et_fade_speed, function(){
 							var active_slide_layout_bg_color = et_get_bg_layout_color( $active_slide ),
@@ -554,6 +571,23 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					}
 
 					et_slider_auto_rotate();
+				}
+
+				/**
+				 * Get current active device based on window width size.
+				 *
+				 * @return {String} View mode.
+				 */
+				function et_pb_get_current_window_mode() {
+					var window_width = $et_window.width();
+					var current_mode = 'desktop';
+					if ( window_width <= 980 && window_width > 479 ) {
+						current_mode = 'tablet';
+					} else if ( window_width <= 479 ) {
+						current_mode = 'phone';
+					}
+
+					return current_mode;
 				}
 		};
 
@@ -1070,11 +1104,11 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 		};
 
 		function et_init_audio_modules() {
-			if (typeof jQuery.fn.mediaelementplayer === 'undefined' || isVB) {
+			if (typeof jQuery.fn.mediaelementplayer === 'undefined') {
 				return;
 			}
 
-			jQuery('.et_audio_container').each(function () {
+			getOutsideVB('.et_audio_container').each(function () {
 				var $this = jQuery(this);
 
 				if ($this.find('.mejs-container:first').length > 0) {
@@ -1111,8 +1145,8 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				et_is_mobile_device = navigator.userAgent.match( /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/ ) !== null,
 				et_is_ipad = navigator.userAgent.match( /iPad/ ),
 				et_is_ie9 = navigator.userAgent.match( /MSIE 9.0/ ) !== null,
-        		et_all_rows = $('.et_pb_row'),
-				$et_container = ! et_pb_custom.is_builder_plugin_used ? $( '.container' ) : et_all_rows,
+				et_all_rows = $('.et_pb_row'),
+				$et_container = window.et_pb_custom && ! window.et_pb_custom.is_builder_plugin_used ? $( '.container' ) : et_all_rows,
 				et_container_width = $et_container.width(),
 				et_is_vertical_fixed_nav = $( 'body' ).hasClass( 'et_vertical_fixed' ),
 				et_is_rtl = $( 'body' ).hasClass( 'rtl' ),
@@ -1139,9 +1173,13 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				$et_sticky_image = $('.et_pb_image_sticky'),
 				$et_pb_counter_amount = $('.et_pb_counter_amount'),
 				$et_pb_carousel = $( '.et_pb_carousel' ),
-				$et_menu_selector = et_pb_custom.is_divi_theme_used ? $( 'ul.nav' ) : $( '.et_pb_fullwidth_menu ul.nav' ),
-				et_pb_ab_bounce_rate = et_pb_custom.ab_bounce_rate * 1000,
-				et_pb_ab_logged_status = {
+				$et_menu_selector = window.et_pb_custom && window.et_pb_custom.is_divi_theme_used ? $( 'ul.nav' ) : $( '.et_pb_fullwidth_menu ul.nav' ),
+				et_pb_ab_bounce_rate = window.et_pb_custom && window.et_pb_custom.ab_bounce_rate * 1000,
+				et_pb_ab_logged_status = {},
+				et_animation_breakpoint = '';
+
+			$.each(et_pb_custom.ab_tests, function (index, test) {
+				et_pb_ab_logged_status[test.post_id] = {
 					read_page: false,
 					read_goal: false,
 					view_goal: false,
@@ -1149,6 +1187,8 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					con_goal: false,
 					con_short: false,
 				};
+			});
+
 			var grid_containers = $('.et_pb_grid_item').parent().get();
 			var $hover_gutter_modules = $('.et_pb_gutter_hover');
 
@@ -1193,7 +1233,6 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				et_parent_menu_longpress_limit = 300,
 				et_parent_menu_longpress_start,
 				et_parent_menu_click = true,
-				is_frontend_builder = isBuilder,
 				et_menu_hover_triggered = false;
 
 			// log the conversion if visitor is on Thank You page and comes from the Shop module which is the Goal
@@ -1250,8 +1289,10 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 			}
 
 			// init AB Testing if enabled
-			if ( et_pb_custom.is_ab_testing_active ) {
-				et_pb_init_ab_test();
+			if (window.et_pb_custom && window.et_pb_custom.is_ab_testing_active) {
+				$.each(et_pb_custom.ab_tests, function (index, test) {
+					et_pb_init_ab_test(test);
+				});
 			}
 
 			if (et_all_rows.length) {
@@ -1262,18 +1303,25 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					row_class = et_get_column_types($this_row.find('>.et_pb_column'));
 
 					if ('' !== row_class) {
-					$this_row.addClass(row_class);
+						$this_row.addClass(row_class);
 					}
 
 					if ($this_row.find('.et_pb_row_inner').length) {
-					$this_row.find('.et_pb_row_inner').each(function () {
-						var $this_row_inner = $(this);
-						row_class = et_get_column_types($this_row_inner.find('.et_pb_column'));
+						$this_row.find('.et_pb_row_inner').each(function () {
+							var $this_row_inner = $(this);
+							row_class = et_get_column_types($this_row_inner.find('.et_pb_column'));
 
-						if ('' !== row_class) {
-						$this_row_inner.addClass(row_class);
-						}
-					});
+							if ('' !== row_class) {
+								$this_row_inner.addClass(row_class);
+							}
+						});
+					}
+
+					// Fix z-index for menu modules
+					var is_z_index_increase = isNaN( $this_row.css('z-index') ) || $this_row.css('z-index') < 3;
+
+					if ($this_row.find('.et_pb_module.et_pb_menu').length && is_z_index_increase) {
+						$this_row.css('z-index', 3);
 					}
 				});
 			}
@@ -1326,7 +1374,10 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 					$this_el.closest( '.et_pb_preload' ).removeClass( 'et_pb_preload' );
 
-					$this_el.remove();
+					// Only remove when it has opened class.
+					if ($this_el.hasClass("opened")) {
+						$this_el.remove();
+					}
 				} );
 
 				$( 'body' ).addClass( 'et_mobile_device' );
@@ -1340,7 +1391,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				$( 'body' ).addClass( 'et_ie9' );
 			}
 
-			if ( $et_pb_video_section.length || is_frontend_builder ) {
+			if ($et_pb_video_section.length || isBuilder) {
 				window.et_pb_video_section_init = function( $et_pb_video_section ) {
 					$et_pb_video_section.find( 'video' ).mediaelementplayer( {
 						pauseOtherPlayers: false,
@@ -1383,7 +1434,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						},
 						mainClass: 'mfp-fade',
 						zoom: {
-							enabled: ! et_pb_custom.is_builder_plugin_used,
+							enabled: window.et_pb_custom && ! window.et_pb_custom.is_builder_plugin_used,
 							duration: 500,
 							opener: function(element) {
 								return element.find('img');
@@ -1396,7 +1447,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				$et_post_gallery.find( 'a' ).unbind( 'click' );
 			}
 
-			if ( $et_lightbox_image.length || is_frontend_builder ) {
+			if ($et_lightbox_image.length || isBuilder) {
 				// prevent attaching of any further actions on click
 				$et_lightbox_image.unbind( 'click' );
 				$et_lightbox_image.bind( 'click' );
@@ -1411,7 +1462,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						removalDelay: 500,
 						mainClass: 'mfp-fade',
 						zoom: {
-							enabled: ! et_pb_custom.is_builder_plugin_used,
+							enabled: window.et_pb_custom && ! window.et_pb_custom.is_builder_plugin_used,
 							duration: 500,
 							opener: function(element) {
 								return element.find('img');
@@ -1424,7 +1475,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				et_pb_image_lightbox_init( $et_lightbox_image );
 			}
 
-			if ( $et_pb_slider.length || is_frontend_builder ) {
+			if ($et_pb_slider.length || isBuilder) {
 				$et_pb_slider.each( function() {
 					$this_slider = $(this);
 
@@ -1433,7 +1484,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 			}
 
 			$et_pb_carousel  = $( '.et_pb_carousel' );
-			if ( $et_pb_carousel.length || is_frontend_builder ) {
+			if ($et_pb_carousel.length || isBuilder) {
 				$et_pb_carousel.each( function() {
 					var $this_carousel = $(this),
 						et_carousel_settings = {
@@ -1444,13 +1495,13 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				} );
 			}
 
-			if (grid_containers.length || is_frontend_builder) {
+			if (grid_containers.length || isBuilder) {
 				$(grid_containers).each(function () {
 					window.et_pb_set_responsive_grid($(this), '.et_pb_grid_item');
 				});
 			}
 
-			if ( $et_pb_fullwidth_portfolio.length || is_frontend_builder ) {
+			if ($et_pb_fullwidth_portfolio.length || isBuilder) {
 
 				window.et_fullwidth_portfolio_init = function( $the_portfolio ) {
 					var $portfolio_items = $the_portfolio.find('.et_pb_portfolio_items');
@@ -1633,6 +1684,9 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 										$(this).data('position', ( index + 1 ) );
 									});
 
+									$portfolio_items.find('.et_pb_portfolio_item').removeClass( 'first_in_row last_in_row' );
+									et_pb_set_responsive_grid( $portfolio_items, '.et_pb_portfolio_item:visible' );
+
 									$next_carousel_group.children().css({'position': '', 'width': original_item_width, 'max-width': original_item_width, 'left': ''});
 
 									$the_portfolio.data('carouseling', false);
@@ -1747,6 +1801,9 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 										$(this).data('position', position );
 										$(this).addClass('position_' + position );
 									});
+
+									$portfolio_items.find('.et_pb_portfolio_item').removeClass( 'first_in_row last_in_row' );
+									et_pb_set_responsive_grid( $portfolio_items, '.et_pb_portfolio_item:visible' );
 
 									$prev_carousel_group.children().css({'position': '', 'width': original_item_width, 'max-width': original_item_width, 'left': ''});
 									$the_portfolio.data('carouseling', false);
@@ -1871,7 +1928,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				window._wpmejsSettings.pauseOtherPlayers = false;
 			}
 
-			if ( $et_pb_filterable_portfolio.length || is_frontend_builder ) {
+			if ($et_pb_filterable_portfolio.length || isBuilder) {
 
 				window.et_pb_filterable_portfolio_init = function( $selector ) {
 					if ( typeof $selector !== 'undefined' ){
@@ -2116,7 +2173,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				}
 			} /*  end if ( $et_pb_filterable_portfolio.length ) */
 
-			if ( $et_pb_gallery.length || is_frontend_builder ) {
+			if ($et_pb_gallery.length || isBuilder) {
 
 				window.set_gallery_grid_items = function( $the_gallery ) {
 					var $the_gallery_items_container = $the_gallery.find('.et_pb_gallery_items'),
@@ -2309,7 +2366,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 				// Frontend builder's interface wouldn't be able to use $et_pb_gallery as selector
 				// due to its react component's nature. Using more global selector works.
-				if ( is_frontend_builder ) {
+				if (isBuilder) {
 					et_pb_gallery_pagination_nav( $('#et-fb-app') );
 				}
 
@@ -2411,7 +2468,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				}
 			};
 
-			if ( $et_pb_countdown_timer.length || is_frontend_builder ) {
+			if ($et_pb_countdown_timer.length || isBuilder) {
 				window.et_pb_countdown_timer_init = function( $et_pb_countdown_timer ) {
 					$et_pb_countdown_timer.each(function(){
 						var timer = $(this);
@@ -2425,51 +2482,62 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				et_pb_countdown_timer_init( $et_pb_countdown_timer );
 			}
 
-			if ( $et_pb_tabs.length || is_frontend_builder ) {
-				window.et_pb_tabs_init = function( $et_pb_tabs ) {
-					var $et_pb_tabs_li = $et_pb_tabs.find( '.et_pb_tabs_controls li' );
+			window.et_pb_tabs_init = function ($et_pb_tabs_all) {
+				$et_pb_tabs_all.each(function() {
+					var $et_pb_tabs    = $(this);
+					var $et_pb_tabs_li = $et_pb_tabs.find('.et_pb_tabs_controls li');
+					var active_slide   = isTB || isBFB || isVB ? 0 : $et_pb_tabs.find('.et_pb_tab_active').index();
 
-					$et_pb_tabs.et_pb_simple_slider( {
-						use_controls   : false,
-						use_arrows     : false,
-						slide          : '.et_pb_all_tabs > div',
-						tabs_animation : true
-					} ).on('et_hashchange', function( event ){
+					var slider_options = {
+						use_controls: false,
+						use_arrows: false,
+						slide: '.et_pb_all_tabs > div',
+						tabs_animation: true
+					};
+
+					if (0 !== active_slide) {
+						slider_options.active_slide = active_slide;
+					}
+
+					$et_pb_tabs.et_pb_simple_slider(slider_options).on('et_hashchange', function (event) {
 						var params = event.params;
-						var $the_tabs = $( '#' + event.target.id );
+						var $the_tabs = $('#' + event.target.id);
 						var active_tab = params[0];
-						if ( !$the_tabs.find( '.et_pb_tabs_controls li' ).eq( active_tab ).hasClass('et_pb_tab_active') ) {
-							$the_tabs.find( '.et_pb_tabs_controls li' ).eq( active_tab ).click();
+						if (!$the_tabs.find('.et_pb_tabs_controls li').eq(active_tab).hasClass('et_pb_tab_active')) {
+							$the_tabs.find('.et_pb_tabs_controls li').eq(active_tab).click();
 						}
 					});
 
-					$et_pb_tabs_li.click( function() {
-						var $this_el        = $(this),
-							$tabs_container = $this_el.closest( '.et_pb_tabs' ).data('et_pb_simple_slider');
+					$et_pb_tabs_li.click(function () {
+						var $this_el = $(this),
+							$tabs_container = $this_el.closest('.et_pb_tabs').data('et_pb_simple_slider');
 
-						if ( $tabs_container.et_animation_running ) return false;
+						if ($tabs_container.et_animation_running) return false;
 
-						$this_el.addClass( 'et_pb_tab_active' ).siblings().removeClass( 'et_pb_tab_active' );
+						$this_el.addClass('et_pb_tab_active').siblings().removeClass('et_pb_tab_active');
 
-						$tabs_container.data('et_pb_simple_slider').et_slider_move_to( $this_el.index() );
+						$tabs_container.data('et_pb_simple_slider').et_slider_move_to($this_el.index());
 
-						if ( $this_el.closest( '.et_pb_tabs' ).attr('id') ) {
+						if ($this_el.closest('.et_pb_tabs').attr('id')) {
 							var tab_state = [];
-							tab_state.push( $this_el.closest( '.et_pb_tabs' ).attr('id') );
-							tab_state.push( $this_el.index() );
-							tab_state = tab_state.join( et_hash_module_param_seperator );
-							et_set_hash( tab_state );
+							tab_state.push($this_el.closest('.et_pb_tabs').attr('id'));
+							tab_state.push($this_el.index());
+							tab_state = tab_state.join(et_hash_module_param_seperator);
+							et_set_hash(tab_state);
 						}
 
 						return false;
-					} );
+					});
 
 					window.et_pb_set_tabs_height();
-				};
-				window.et_pb_tabs_init( $et_pb_tabs );
+				});
+			};
+
+			if ($et_pb_tabs.length || isBuilder) {
+				window.et_pb_tabs_init($et_pb_tabs);
 			}
 
-			if ( $et_pb_map.length || is_frontend_builder ) {
+			if ($et_pb_map.length || isBuilder) {
 				function et_pb_init_maps() {
 					$et_pb_map.each(function(){
 						et_pb_map_init( $(this) );
@@ -2481,8 +2549,17 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						return;
 					}
 
+					var current_mode        = et_pb_get_current_window_mode();
+					et_animation_breakpoint = current_mode;
+					var suffix              = current_mode !== 'desktop' ? '-' + current_mode : '';
+					var prev_suffix         = current_mode === 'phone' ? '-tablet' : '';
+					var grayscale_value     = $this_map_container.attr( 'data-grayscale' + suffix ) || 0;
+					if ( ! grayscale_value ) {
+						grayscale_value = $this_map_container.attr( 'data-grayscale' + prev_suffix ) || $this_map_container.attr( 'data-grayscale' ) || 0;
+					}
+
 					var $this_map = $this_map_container.children('.et_pb_map'),
-						this_map_grayscale = $this_map_container.attr( 'data-grayscale' ) || 0,
+						this_map_grayscale = grayscale_value,
 						is_draggable = ( et_is_mobile_device && $this_map.data('mobile-dragging') !== 'off' ) || ! et_is_mobile_device,
 						infowindow_active;
 
@@ -2490,9 +2567,13 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						this_map_grayscale = '-' + this_map_grayscale.toString();
 					}
 
+					// Being saved to pass lat and lang of center location.
+					var data_center_lat = parseFloat($this_map.attr('data-center-lat')) || 0;
+					var data_center_lng = parseFloat($this_map.attr('data-center-lng')) || 0;
+
 					$this_map_container.data('map', new google.maps.Map( $this_map[0], {
 						zoom: parseInt( $this_map.attr('data-zoom') ),
-						center: new google.maps.LatLng( parseFloat( $this_map.attr('data-center-lat') ) , parseFloat( $this_map.attr('data-center-lng') )),
+						center: new google.maps.LatLng(data_center_lat, data_center_lng),
 						mapTypeId: google.maps.MapTypeId.ROADMAP,
 						scrollwheel: $this_map.attr('data-mouse-wheel') == 'on' ? true : false,
 						draggable: is_draggable,
@@ -2537,6 +2618,12 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 								infowindow_active = infowindow;
 
 								infowindow.open( $this_map_container.data('map'), marker );
+
+								// Trigger mouse hover event for responsive content swap.
+								$this_marker.closest('.et_pb_module').trigger('mouseleave');
+								setTimeout(function (){
+									$this_marker.closest('.et_pb_module').trigger('mouseenter');
+								}, 1);
 							});
 						}
 					});
@@ -2553,20 +2640,35 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				}
 			}
 
-			if ( $et_pb_shop.length ) {
-				$et_pb_shop.each( function() {
-					var $this_el = $(this),
-						icon     = $this_el.data('icon') || '';
+			$('.et_pb_shop, .et_pb_wc_upsells, .et_pb_wc_related_products').each(function() {
+				var $this_el    = $(this);
+				var icon        = $this_el.data('icon') || '';
+				var icon_tablet = $this_el.data('icon-tablet') || '';
+				var icon_phone  = $this_el.data('icon-phone') || '';
+				var $overlay    = $this_el.find('.et_overlay');
 
-					if ( icon === '' ) {
-						return true;
-					}
+				// Handle Extra theme.
+				if (!$overlay.length && $this_el.hasClass('et_pb_wc_related_products')) {
+					$overlay    = $this_el.find('.et_pb_extra_overlay');
+					$this_el    = $overlay.closest('.et_pb_module_inner').parent();
+					icon        = $this_el.attr('data-icon') || '';
+					icon_tablet = $this_el.attr('data-icon-tablet') || '';
+					icon_phone  = $this_el.attr('data-icon-phone') || '';
+				}
 
-					$this_el.find( '.et_overlay' )
-						.attr( 'data-icon', icon )
-						.addClass( 'et_pb_inline_icon' );
-				} );
-			}
+				// Set data icon and inline icon class.
+				if (icon !== '') {
+					$overlay.attr('data-icon', icon).addClass('et_pb_inline_icon');
+				}
+
+				if (icon_tablet !== '') {
+					$overlay.attr('data-icon-tablet', icon_tablet).addClass('et_pb_inline_icon_tablet');
+				}
+
+				if (icon_phone !== '') {
+					$overlay.attr('data-icon-phone', icon_phone).addClass('et_pb_inline_icon_phone');
+				}
+			});
 
 			$et_pb_background_layout_hoverable.each(function() {
 				var $this_el                = $(this);
@@ -2599,10 +2701,44 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				});
 			});
 
-			if ( $et_pb_circle_counter.length || is_frontend_builder || $( '.et_pb_ajax_pagination_container' ).length > 0 ) {
-				window.et_pb_circle_counter_init = function($the_counter, animate) {
+			if ($et_pb_circle_counter.length || isBuilder || $( '.et_pb_ajax_pagination_container' ).length > 0) {
+				window.et_pb_circle_counter_init = function($the_counter, animate, custom_mode) {
 					if ( $the_counter.width() <= 0 ) {
 						return;
+					}
+
+					// Update animation breakpoint variable and generate suffix.
+					var current_mode        = et_pb_get_current_window_mode();
+					et_animation_breakpoint = current_mode;
+
+					// Custom Mode is used to pass custom preview mode such as hover. Current mode is
+					// actual preview mode based on current window size.
+					var suffix = '';
+					if ('undefined' !== typeof custom_mode && '' !== custom_mode) {
+						suffix = '-' + custom_mode;
+					} else if (current_mode !== 'desktop') {
+						suffix = '-' + current_mode;
+					}
+
+					// Update bar background color based on active mode.
+					var bar_color      = $the_counter.data( 'bar-bg-color' );
+					var mode_bar_color = $the_counter.data( 'bar-bg-color' + suffix );
+					if ( typeof mode_bar_color !== 'undefined' && mode_bar_color !== '' ) {
+						bar_color = mode_bar_color;
+					}
+
+					// Update bar track color based on active mode.
+					var track_color      = $the_counter.data( 'color' ) || '#000000';
+					var mode_track_color = $the_counter.data( 'color' + suffix );
+					if ( typeof mode_track_color !== 'undefined' && mode_track_color !== '' ) {
+						track_color = mode_track_color;
+					}
+
+					// Update bar track color alpha based on active mode.
+					var track_color_alpha      = $the_counter.data( 'alpha' ) || '0.1';
+					var mode_track_color_alpha = $the_counter.data( 'alpha' + suffix );
+					if ('undefined' !== typeof mode_track_color_alpha && '' !== mode_track_color_alpha && !isNaN(mode_track_color_alpha)) {
+						track_color_alpha = mode_track_color_alpha;
 					}
 
 					$the_counter.easyPieChart({
@@ -2611,9 +2747,9 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 							enabled: true
 						},
 						size: 0 !== $the_counter.width() ? $the_counter.width() : 10, // set the width to 10 if actual width is 0 to avoid js errors
-						barColor: $the_counter.data( 'bar-bg-color' ),
-						trackColor: $the_counter.data( 'color' ) || '#000000',
-						trackAlpha: $the_counter.data( 'alpha' ) || '0.1',
+						barColor: bar_color,
+						trackColor: track_color,
+						trackAlpha: track_color_alpha,
 						scaleColor: false,
 						lineWidth: 5,
 						onStart: function() {
@@ -2633,11 +2769,21 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						var $the_counter = $(this).find('.et_pb_circle_counter_inner');
 						window.et_pb_circle_counter_init($the_counter, false);
 
-						$the_counter.on('containerWidthChanged', function( event ){
+						// Circle Counter on Hover.
+						$the_counter.on('mouseover', function(event){
+							window.et_pb_circle_counter_update($the_counter, event, 'hover');
+						});
+
+						// Circle Counter on "Unhover" as reset of Hover effect.
+						$the_counter.on('mouseleave', function(event){
+							window.et_pb_circle_counter_update($the_counter, event);
+						});
+
+						$the_counter.on('containerWidthChanged', function(event, custom_mode){
 							$the_counter = $( event.target );
 							$the_counter.find('canvas').remove();
 							$the_counter.removeData('easyPieChart' );
-							window.et_pb_circle_counter_init($the_counter, true);
+							window.et_pb_circle_counter_init($the_counter, true, custom_mode);
 						});
 
 					});
@@ -2645,7 +2791,57 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				window.et_pb_reinit_circle_counters( $et_pb_circle_counter );
 			}
 
-			if ( $et_pb_number_counter.length || is_frontend_builder || $( '.et_pb_ajax_pagination_container' ).length > 0 ) {
+			/**
+			 * Update circle counter easyPieChart data on custom mode.
+			 *
+			 * @since 3.25.3
+			 *
+			 * @param {jQuery} $this_counter Circle counter jQuery element.
+			 * @param {Object} event         Event object
+			 * @param {String} custom_mode   Custom view mode such as hover/desktop/tablet/phone.
+			 */
+			window.et_pb_circle_counter_update = function($this_counter, event, custom_mode) {
+				if (!$this_counter.is(':visible') || typeof $this_counter.data('easyPieChart') === 'undefined') {
+					return;
+				}
+
+				// Check circle attributes value for current event type.
+				if ($(event.target).length > 0) {
+					if ('mouseover' === event.type || 'mouseleave' === event.type) {
+						has_field_value = false;
+
+						// Check if one of those field value exist.
+						var mode_bar_color         = $this_counter.data('bar-bg-color-hover');
+						var mode_track_color       = $this_counter.data('color-hover');
+						var mode_track_color_alpha = $this_counter.data('alpha-hover');
+
+						if (typeof mode_bar_color !== 'undefined' && mode_bar_color !== '') {
+							has_field_value = true;
+						} else if (typeof mode_track_color !== 'undefined' && mode_track_color !== '') {
+							has_field_value = true;
+						} else if (typeof mode_track_color_alpha !== 'undefined' && mode_track_color_alpha !== '') {
+							has_field_value = true;
+						}
+
+						if (!has_field_value) {
+							return;
+						}
+					}
+				}
+
+				// Reinit circle counter for current event.
+				var container_param = [];
+				if ('undefined' !== typeof custom_mode && '' !== custom_mode) {
+					container_param = [custom_mode];
+				}
+				$this_counter.trigger('containerWidthChanged', container_param);
+
+				// Animation should be disabled here.
+				$this_counter.data('easyPieChart').disableAnimation();
+				$this_counter.data('easyPieChart').update($this_counter.data('number-value'));
+			};
+
+			if ($et_pb_number_counter.length || isBuilder || $( '.et_pb_ajax_pagination_container' ).length > 0) {
 				window.et_pb_reinit_number_counters = function( $et_pb_number_counter ) {
 
 					var is_firefox = $('body').hasClass('gecko');
@@ -2671,8 +2867,11 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 							trackColor: false,
 							scaleColor: false,
 							lineWidth: 0,
-							onStart: function () {
+							onStart: function (from, to) {
 								$(this.el).addClass('active');
+								if( from === to ){
+									$(this.el).find('.percent-value').text( et_format_number( $(this.el).data('number-value'), separator ) );
+								}
 							},
 							onStep: function(from, to, percent) {
 								if ( percent != to )
@@ -2692,7 +2891,13 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					return;
 				}
 
-				var $parallaxWindow = isScrollOnAppWindow() ? $(window) : $et_top_window;
+				var $parallaxWindow = $et_top_window;
+				if (isTB) {
+					$parallaxWindow = window.top.jQuery('#et-fb-app');
+				} else if (isScrollOnAppWindow()) {
+					$parallaxWindow = $(window);
+				}
+
 				var $this = $(this);
 				var element_top = isBuilderModeZoom() ? $this.offset().top / 2 : $this.offset().top;
 				var window_top = $parallaxWindow.scrollTop();
@@ -2745,11 +2950,12 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				});
 
 				// Bail if window scroll happens on app window (visual builder desktop mode)
-				if (isScrollOnAppWindow()) {
+				if (isScrollOnAppWindow() && !isTB) {
 					return;
 				}
 
-				var topWindow = isBuilder ? window.top : window;
+				var $parallaxWindow = isTB ? window.top.jQuery('#et-fb-app') : $et_top_window;
+
 				var backgroundOffset = isBFB ? topWindow.jQuery('#et_pb_layout .inside').offset().top : 0;
 				var heightMultiplier = isBuilderModeZoom() ? 2 : 1;
 				var parentOffset = $this_parent.offset();
@@ -2757,8 +2963,8 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 				$this_parallax.css({
 					width: $(window).width(),
-					height: $et_top_window.innerHeight() * heightMultiplier,
-					top: ($et_top_window.scrollTop() - backgroundOffset) - parentOffsetTop,
+					height: $parallaxWindow.innerHeight() * heightMultiplier,
+					top: ($parallaxWindow.scrollTop() - backgroundOffset) - parentOffsetTop,
 					left: 0 - parentOffset.left,
 					backgroundAttachment: 'scroll'
 				});
@@ -2775,6 +2981,22 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					$.proxy( et_parallax_set_height, $section )();
 				}
 			}
+
+			// Disable hover event when user opening toggle on mobile.
+			$('.et_pb_accordion').on('touchstart', function(e) {
+				// Ensure to disable only on mobile.
+				if ('desktop' !== et_pb_get_current_window_mode()) {
+					var $target = $(e.target);
+
+					// Only disable when user click to open the toggle.
+					if ($target.hasClass('et_pb_toggle_title') || $target.hasClass('et_fb_toggle_overlay')) {
+						e.preventDefault();
+
+						// Trigger click event to open the toggle.
+						$target.trigger('click');
+					}
+				}
+			});
 
 			$( 'body' ).on( 'click', '.et_pb_toggle_title, .et_fb_toggle_overlay', function() {
 				var $this_heading         = $(this),
@@ -2986,7 +3208,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 							}
 
 							// add error message for the field if it is required and empty
-							if ('required' === required_mark && ('' === this_val || true === unchecked)) {
+						if ('required' === required_mark && ('' === this_val || true === unchecked) && ! $this_el.is('[id^="et_pb_contact_et_number_"]')) {
 
 								if (false === $this_wrapper) {
 									$this_el.addClass('et_contact_error');
@@ -3176,7 +3398,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				$element.each( function() {
 					var $this_el  = $(this);
 
-					if ( is_frontend_builder ) {
+					if (isInsideVB($this_el)) {
 						$this_el.removeAttr('data-ratio');
 						$this_el.find('video').removeAttr('style');
 					}
@@ -3214,7 +3436,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					$video_elements.width( width ).height( height );
 
 					// need to re-set the values to make it work correctly in Frontend builder
-					if ( is_frontend_builder ) {
+					if (isBuilder) {
 						setTimeout( function() {
 							$video_elements.width( width ).height( height );
 						}, 0 );
@@ -3235,7 +3457,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					et_pb_adjust_video_margin( $this_el );
 
 					// need to re-calculate the values in Frontend builder
-					if ( is_frontend_builder ) {
+					if (isInsideVB($this_el)) {
 						setTimeout( function() {
 							et_pb_adjust_video_margin( $this_el );
 						}, 0 );
@@ -3340,7 +3562,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 			// This function can end up being called a lot of times and it's quite expensive in terms of cpu due to
 			// recalculating styles. Debouncing it (VB only) for performances reasons.
-			window.et_fix_slider_height = !is_frontend_builder ? et_fix_slider_height : function($slider) {
+			window.et_fix_slider_height = !isBuilder ? et_fix_slider_height : function($slider) {
 				var $this_slider = $slider || $et_pb_slider;
 
 				if ( ! $this_slider || ! $this_slider.length ) {
@@ -3376,12 +3598,11 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 			et_pb_form_placeholders_init( $( '.et_pb_comments_module #commentform' ) );
 
-			$('.et_pb_fullwidth_menu ul.nav').each(function(i) {
-				i++;
-				et_duplicate_menu( $(this), $(this).parents('.et_pb_row').find('div .mobile_nav'), 'mobile_menu' + i, 'et_mobile_menu' );
+			$('.et-menu-nav ul.nav').each(function(i) {
+				et_duplicate_menu($(this), $(this).closest('.et_pb_module').find('div .mobile_nav'), 'mobile_menu' + (i + 1), 'et_mobile_menu');
 			});
 
-			$('.et_pb_fullwidth_menu').each(function() {
+			$('.et_pb_menu, .et_pb_fullwidth_menu').each(function() {
 				var this_menu = $( this ),
 					bg_color = this_menu.data( 'bg_color' );
 				if ( bg_color ) {
@@ -3911,7 +4132,75 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				return fallback;
 			}
 
-			function et_animate_element( $element ) {
+			/**
+			 * Reinit animation styles on window resize.
+			 *
+			 * It will check current window mode then compare it with the breakpoint of last rendered
+			 * animation styles. If it's different, it will recall et_process_animation_data().
+			 *
+			 * @since 3.23
+			 */
+			function et_pb_reinit_animation() {
+				// If mode is changed, reinit animation data.
+				if ( et_pb_get_current_window_mode() !== et_animation_breakpoint ) {
+					et_process_animation_data( false );
+				}
+			}
+
+			/**
+			 * Update map filters.
+			 *
+			 * @since 3.23
+			 * @since 3.24.1 Prevent reinit maps to update map filters.
+			 *
+			 * @param {jQuery} $et_pb_map
+			 */
+			function et_pb_update_maps_filters($et_pb_map) {
+				// Ensure to update map filters only on preview mode changes.
+				if (et_pb_get_current_window_mode() === et_animation_breakpoint)  {
+					return false;
+				}
+
+				$et_pb_map.each(function(){
+					var $this_map = $(this);
+					var this_map  = $this_map.data('map');
+
+					// Ensure the map exist.
+					if ('undefined' === typeof this_map) {
+						return;
+					}
+
+					var current_mode        = et_pb_get_current_window_mode();
+					et_animation_breakpoint = current_mode;
+					var suffix              = current_mode !== 'desktop' ? '-' + current_mode : '';
+					var prev_suffix         = current_mode === 'phone' ? '-tablet' : '';
+					var grayscale_value     = $this_map.attr('data-grayscale' + suffix) || 0;
+					if (!grayscale_value) {
+						grayscale_value = $this_map.attr('data-grayscale' + prev_suffix) || $this_map.attr('data-grayscale') || 0;
+					}
+
+					// Convert it to negative value as string.
+					if (grayscale_value !== 0) {
+						grayscale_value = '-' + grayscale_value.toString();
+					}
+
+					// Apply grayscale value on the saturation.
+					this_map.setOptions({
+						styles: [{
+							stylers: [
+								{ saturation: parseInt(grayscale_value) }
+							]
+						}]
+					});
+				});
+			}
+
+			function et_animate_element($elementOriginal) {
+				var $element = $elementOriginal;
+				if ($element.hasClass('et_had_animation')) {
+					return;
+				}
+
 				var animation_style            = $element.attr('data-animation-style');
 				var animation_repeat           = $element.attr('data-animation-repeat');
 				var animation_duration         = $element.attr('data-animation-duration');
@@ -3919,10 +4208,11 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				var animation_intensity        = $element.attr('data-animation-intensity');
 				var animation_starting_opacity = $element.attr('data-animation-starting-opacity');
 				var animation_speed_curve      = $element.attr('data-animation-speed-curve');
-
+				var $buttonWrapper             = $element.parent('.et_pb_button_module_wrapper');
+				var isEdge                     = $('body').hasClass('edge');
 				// Avoid horizontal scroll bar when section is rolled
 				if ($element.is('.et_pb_section') && 'roll' === animation_style) {
-					$('#et-boc').css('overflow-x', 'hidden');
+					$(et_frontend_scripts.builderCssContainerPrefix + ', ' + et_frontend_scripts.builderCssLayoutPrefix).css('overflow-x', 'hidden');
 				}
 
 				// Remove all the animation data attributes once the variables have been set
@@ -3934,6 +4224,12 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				// Check if the animation speed curve is one of the allowed ones and set it to the default one if it is not
 				if ( $.inArray( animation_speed_curve, ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out'] ) === -1 ) {
 					animation_speed_curve = 'ease-in-out';
+				}
+
+				if ($buttonWrapper.length > 0) {
+					$element.removeClass('et_animated');
+					$element = $buttonWrapper;
+					$element.addClass('et_animated');
 				}
 
 				$element.css({
@@ -3963,10 +4259,10 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					}
 
 					// If it does set the original animation to the base animation type
-					var original_animation = animation;
+					original_animation = animation;
 
 					// Get the remainder of the animation style and set it as the direction
-					var original_direction = animation_style.substr( animation.length, animation_style.length );
+					original_direction = animation_style.substr(animation.length, animation_style.length);
 
 					// If that is not empty convert it to lower case for better readability's sake
 					if ( '' !== original_direction ) {
@@ -3980,8 +4276,9 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					intensity_css = et_process_animation_intensity( original_animation, original_direction, intensity_percentage );
 				}
 
-				if ( ! $.isEmptyObject( intensity_css ) ) {
-					$element.css( intensity_css );
+				if (!$.isEmptyObject(intensity_css)) {
+					// temporarily disable transform transitions to avoid double animation.
+					$element.css(isEdge ? $.extend(intensity_css, { transition: 'transform 0s ease-in' }) : intensity_css);
 				}
 
 				$element.addClass( 'et_animated' );
@@ -3992,10 +4289,16 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				if ( ! animation_repeat ) {
 					var animation_duration_ms = parseInt( animation_duration );
 					var animation_delay_ms = parseInt( animation_delay );
-
 					setTimeout( function() {
 						et_remove_animation( $element );
 					}, animation_duration_ms + animation_delay_ms );
+
+					if (isEdge && !$.isEmptyObject(intensity_css)) {
+						// re-enable transform transitions after animation is done.
+						setTimeout(function () {
+							$element.css('transition', '');
+						}, animation_duration_ms + animation_delay_ms + 50);
+					}
 				}
 			}
 
@@ -4022,14 +4325,36 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 						var $animated = $('.' + animation_entry.class);
 
+						// Get current active device.
+						var current_mode    = et_pb_get_current_window_mode();
+						var is_desktop_view = current_mode === 'desktop';
+
+						// Update animation breakpoint variable.
+						et_animation_breakpoint = current_mode;
+
+						// Generate suffix.
+						var suffix = '';
+						if ( ! is_desktop_view ) {
+							suffix += '_' + current_mode;
+						}
+
+						// Being save and prepare the value.
+						var data_style     = ! is_desktop_view && typeof animation_entry['style' + suffix] !== 'undefined' ? animation_entry['style' + suffix] : animation_entry.style;
+						var data_repeat    = ! is_desktop_view && typeof animation_entry['repeat' + suffix] !== 'undefined' ? animation_entry['repeat' + suffix] : animation_entry.repeat;
+						var data_duration  = ! is_desktop_view && typeof animation_entry['duration' + suffix] !== 'undefined' ? animation_entry['duration' + suffix] : animation_entry.duration;
+						var data_delay     = ! is_desktop_view && typeof animation_entry['delay' + suffix] !== 'undefined' ? animation_entry['delay' + suffix] : animation_entry.delay;
+						var data_intensity = ! is_desktop_view && typeof animation_entry['intensity' + suffix] !== 'undefined' ? animation_entry['intensity' + suffix] : animation_entry.intensity;
+						var data_starting_opacity = ! is_desktop_view && typeof animation_entry['starting_opacity' + suffix] !== 'undefined' ? animation_entry['starting_opacity' + suffix] : animation_entry.starting_opacity;
+						var data_speed_curve      = ! is_desktop_view && typeof animation_entry['speed_curve' + suffix] !== 'undefined' ? animation_entry['speed_curve' + suffix] : animation_entry.speed_curve;
+
 						$animated.attr({
-							'data-animation-style'           : animation_entry.style,
-							'data-animation-repeat'          : 'once' === animation_entry.repeat ? '' : 'infinite',
-							'data-animation-duration'        : animation_entry.duration,
-							'data-animation-delay'           : animation_entry.delay,
-							'data-animation-intensity'       : animation_entry.intensity,
-							'data-animation-starting-opacity': animation_entry.starting_opacity,
-							'data-animation-speed-curve'     : animation_entry.speed_curve
+							'data-animation-style'           : data_style,
+							'data-animation-repeat'          : 'once' === data_repeat ? '' : 'infinite',
+							'data-animation-duration'        : data_duration,
+							'data-animation-delay'           : data_delay,
+							'data-animation-intensity'       : data_intensity,
+							'data-animation-starting-opacity': data_starting_opacity,
+							'data-animation-speed-curve'     : data_speed_curve
 						});
 
 						// Process the waypoints logic if the waypoints are not ignored
@@ -4339,7 +4664,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					'zoom', 'zoomTop', 'zoomRight', 'zoomBottom', 'zoomLeft',
 					'flip', 'flipTop', 'flipRight', 'flipBottom', 'flipLeft',
 					'fold', 'foldTop', 'foldRight', 'foldBottom', 'foldLeft',
-					'roll', 'rollTop', 'rollRight', 'rollBottom', 'rollLeft'
+					'roll', 'rollTop', 'rollRight', 'rollBottom', 'rollLeft', 'transformAnim',
 				];
 			}
 
@@ -4348,7 +4673,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 				// Remove attributes which avoid horizontal scroll to appear when section is rolled
 				if ($element.is('.et_pb_section') && $element.is('.roll')) {
-					$('#et-boc').css('overflow-x', '');
+					$(et_frontend_scripts.builderCssContainerPrefix + ', ' + et_frontend_scripts.builderCssLayoutPrefix).css('overflow-x', '');
 				}
 
 				$element.removeClass( animation_classes.join(' ') );
@@ -4357,15 +4682,13 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					'animation-duration'        : '',
 					'animation-timing-function' : '',
 					'opacity'                   : '',
-					'transform'                 : ''
+					'transform'                 : '',
 				});
 
 				// Prevent animation module with no explicit position property to be incorrectly positioned
 				// after animation is clomplete and animation classname is removed because animation classname has
-				// animation-name property which gives pseudo correct z-index.
-				if ('static' === $element.css('position')) {
-					$element.addClass('et_had_animation');
-				}
+				// animation-name property which gives pseudo correct z-index. This class also works as a marker to prevent animating already animated objects.
+				$element.addClass('et_had_animation');
 			}
 
 			function et_remove_animation_data( $element ) {
@@ -4382,7 +4705,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				$.each( data_attrs_to_remove, function( index, attr_name ) {
 					$element.removeAttr( attr_name );
 				} );
-			};
+			}
 
 			window.et_reinit_waypoint_modules = et_pb_debounce( function() {
 					var $et_pb_circle_counter = $( '.et_pb_circle_counter' ),
@@ -4390,7 +4713,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						$et_pb_video_background = $( '.et_pb_section_video_bg video' );
 
 				// if waypoint is available and we are not ignoring them.
-				if ( $.fn.waypoint && 'yes' !== et_pb_custom.ignore_waypoints && !is_frontend_builder ) {
+				if ($.fn.waypoint && window.et_pb_custom && 'yes' !== window.et_pb_custom.ignore_waypoints && !isBuilder) {
 					et_process_animation_data( true );
 
 					// get all of our waypoint things.
@@ -4448,34 +4771,46 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					}
 
 					// Set waypoint for goal module.
-					if ($('.et_pb_ab_goal').length && ! is_frontend_builder) {
-						var $et_pb_ab_goal = $( '.et_pb_ab_goal' );
+					if (!isBuilder) {
+						$.each(et_pb_custom.ab_tests, function (index, test) {
+							var $et_pb_ab_goal = et_builder_ab_get_goal_node(test.post_id);
 
-						et_waypoint( $et_pb_ab_goal, {
-							offset: et_get_offset( $(this), '80%'),
-							handler: function() {
-								if ( et_pb_ab_logged_status['read_goal'] || ! $et_pb_ab_goal.length || ! $et_pb_ab_goal.visible( true ) ) {
-									return;
-								}
-
-								// log the goal_read if goal is still visible after 3 seconds.
-								setTimeout( function() {
-									if ( $et_pb_ab_goal.length && $et_pb_ab_goal.visible( true ) && ! et_pb_ab_logged_status['read_goal'] ) {
-										et_pb_ab_update_stats( 'read_goal' );
-									}
-								}, 3000 );
-
-								et_pb_maybe_log_event( $et_pb_ab_goal, 'view_goal' );
+							if (0 === $et_pb_ab_goal.length) {
+								return true;
 							}
+
+							et_waypoint($et_pb_ab_goal, {
+								offset: et_get_offset($(this), '80%'),
+								handler: function() {
+									if (et_pb_ab_logged_status[test.post_id]['read_goal'] || !$et_pb_ab_goal.length || !$et_pb_ab_goal.visible(true)) {
+										return;
+									}
+
+									// log the goal_read if goal is still visible after 3 seconds.
+									setTimeout(function() {
+										if ($et_pb_ab_goal.length && $et_pb_ab_goal.visible(true) && !et_pb_ab_logged_status[test.post_id]['read_goal']) {
+											et_pb_ab_update_stats('read_goal', test.post_id, undefined, test.test_id);
+										}
+									}, 3000);
+
+									et_pb_maybe_log_event($et_pb_ab_goal, 'view_goal');
+								}
+							});
 						});
 					}
 				} else {
 					// if no waypoints supported then apply all the animations right away
 					et_process_animation_data( false );
 
-					var animated_class = is_frontend_builder ? 'et-animated--vb' : 'et-animated';
+					var animated_class = isBuilder ? 'et-animated--vb' : 'et-animated';
 
 					$('.et-waypoint').addClass(animated_class);
+					// While in the builder, trigger all animations instantly as otherwise
+					// TB layouts that are displayed but are not the currently edited post
+					// will have their animated modules invisible due to .et-waypoint.
+					$('.et-waypoint').each(function () {
+						et_animate_element($(this));
+					});
 
 					if ( $et_pb_circle_counter.length ) {
 						$et_pb_circle_counter.each(function() {
@@ -4504,22 +4839,26 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					}
 
 					// log the stats without waypoints
-					if ( $( '.et_pb_ab_goal' ).length ) {
-						var $et_pb_ab_goal = $( '.et_pb_ab_goal' );
+					$.each(et_pb_custom.ab_tests, function (index, test) {
+						var $et_pb_ab_goal = et_builder_ab_get_goal_node(test.post_id);
 
-						if ( et_pb_ab_logged_status['read_goal'] || ! $et_pb_ab_goal.length || ! $et_pb_ab_goal.visible( true ) ) {
-							return;
+						if (0 === $et_pb_ab_goal.length) {
+							return true;
+						}
+
+						if (et_pb_ab_logged_status[test.post_id]['read_goal'] || !$et_pb_ab_goal.length || !$et_pb_ab_goal.visible(true)) {
+							return true;
 						}
 
 						// log the goal_read if goal is still visible after 3 seconds.
-						setTimeout( function() {
-							if ( $et_pb_ab_goal.length && $et_pb_ab_goal.visible( true ) && ! et_pb_ab_logged_status['read_goal'] ) {
-								et_pb_ab_update_stats( 'read_goal' );
+						setTimeout(function() {
+							if ($et_pb_ab_goal.length && $et_pb_ab_goal.visible(true) && !et_pb_ab_logged_status[test.post_id]['read_goal'] ) {
+								et_pb_ab_update_stats('read_goal', test.post_id, undefined, test.test_id);
 							}
-						}, 3000 );
+						}, 3000);
 
-						et_pb_maybe_log_event( $et_pb_ab_goal, 'view_goal' );
-					}
+						et_pb_maybe_log_event($et_pb_ab_goal, 'view_goal');
+					});
 				} // End checking of waypoints.
 
 				if ( $et_pb_video_background.length ) {
@@ -4530,7 +4869,6 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					});
 				} // End of et_pb_debounce().
 			}, 100 );
-
 
 			function et_process_link_options_data() {
 				if ('undefined' !== typeof et_link_options_data && et_link_options_data.length > 0) {
@@ -4559,7 +4897,22 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 									return;
 								}
 
-								window.location = link_option_entry.url;
+								var url = link_option_entry.url;
+
+								if ('#product_reviews_tab' === url) {
+									var $reviewsTabLink = $('.reviews_tab a');
+
+									if ($reviewsTabLink.length > 0) {
+										$reviewsTabLink.trigger('click');
+										et_pb_smooth_scroll($reviewsTabLink, undefined, 800);
+										history.pushState(null, '', url);
+									}
+								} else if (url && '#' === url[0] && $(url).length) {
+									et_pb_smooth_scroll($(url), undefined, 800);
+									history.pushState(null, "", url);
+								} else {
+									window.location = url;
+								}
 							}
 						});
 
@@ -4594,7 +4947,15 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					'.et_pb_contact_captcha',
 
 					// Tabs
-					'.et_pb_tabs_controls a'
+					'.et_pb_tabs_controls a',
+
+					// Woo Image
+					'.flex-control-nav *',
+
+					// Menu
+					'.et_pb_menu__search-button',
+					'.et_pb_menu__close-search-button',
+					'.et_pb_menu__search-container *',
 				];
 
 				for (var i = 0; i < click_exceptions.length; i++) {
@@ -4609,36 +4970,35 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 			et_process_link_options_data();
 
-			function et_pb_init_ab_test() {
+			function et_pb_init_ab_test(test) {
 				// Disable AB Testing tracking on VB
 				// AB Testing should not record anything on AB Testing
-				if (is_frontend_builder) {
+				if (isBuilder) {
 					return;
 				}
 
-				var $et_pb_ab_goal   = $('.et_pb_ab_goal');
-				var et_ab_subject_id = et_pb_get_subject_id();
+				var $et_pb_ab_goal   = et_builder_ab_get_goal_node(test.post_id);
+				var et_ab_subject_id = et_pb_get_subject_id(test.post_id);
 
-				$.each( et_pb_ab_logged_status, function( key, value ) {
+				$.each(et_pb_ab_logged_status[test.post_id], function(key) {
 					var cookie_subject = 'click_goal' === key || 'con_short' === key ? '' : et_ab_subject_id;
 
-					et_pb_ab_logged_status[key] = et_pb_check_cookie_value( 'et_pb_ab_' + key + '_' + et_pb_custom.page_id + et_pb_custom.unique_test_id + cookie_subject, 'true' );
-
+					et_pb_ab_logged_status[test.post_id][key] = et_pb_check_cookie_value('et_pb_ab_' + key + '_' + test.post_id + test.test_id + cookie_subject, 'true');
 				});
 
 				// log the page read event if user stays on page long enough and if not logged for current subject
-				if ( ! et_pb_ab_logged_status['read_page'] ) {
+				if ( ! et_pb_ab_logged_status[test.post_id]['read_page'] ) {
 					setTimeout( function() {
-						et_pb_ab_update_stats( 'read_page' );
+						et_pb_ab_update_stats('read_page', test.post_id, undefined, test.test_id);
 					}, et_pb_ab_bounce_rate );
 				}
 
 				// add the cookies for shortcode tracking, if enabled
-				if ( 'on' === et_pb_custom.is_shortcode_tracking && ! et_pb_ab_logged_status['con_short'] ) {
-					et_pb_set_cookie( 365, 'et_pb_ab_shortcode_track_' + et_pb_custom.page_id + '=' + et_pb_custom.page_id + '_' + et_pb_get_subject_id() + '_' + et_pb_custom.unique_test_id );
+				if ('on' === et_pb_custom.is_shortcode_tracking && !et_pb_ab_logged_status[test.post_id]['con_short']) {
+					et_pb_set_cookie(365, 'et_pb_ab_shortcode_track_' + test.post_id + '=' + test.post_id + '_' + et_ab_subject_id + '_' + test.test_id);
 				}
 
-				if ( $et_pb_ab_goal.length ) {
+				if ($et_pb_ab_goal.length) {
 					// if goal is a module and has a button then track the conversions, otherwise track clicks
 					if ( $et_pb_ab_goal.hasClass( 'et_pb_module' ) && ( $et_pb_ab_goal.hasClass( 'et_pb_button' ) || $et_pb_ab_goal.find( '.et_pb_button' ).length ) ) {
 						// Log con_goal if current goal doesn't require any specific conversion calculation
@@ -4648,45 +5008,46 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 							if ( $et_pb_ab_goal.hasClass( 'et_pb_comments_module' ) ) {
 								var page_url = window.location.href,
 									comment_submitted = -1 !== page_url.indexOf( '#comment-' ) ? true : false,
-									log_conversion = et_pb_check_cookie_value( 'et_pb_ab_comment_log_' + et_pb_custom.page_id + et_pb_custom.unique_test_id, 'true' );
+									log_conversion = et_pb_check_cookie_value('et_pb_ab_comment_log_' + test.post_id + test.test_id, 'true');
 
 								if ( comment_submitted && log_conversion ) {
-									et_pb_ab_update_stats( 'con_goal' );
-									et_pb_set_cookie( 0, 'et_pb_ab_comment_log_' + et_pb_custom.page_id + et_pb_custom.unique_test_id + '=true' );
+									et_pb_ab_update_stats('con_goal', test.post_id, undefined, test.test_id);
+									et_pb_set_cookie(0, 'et_pb_ab_comment_log_' + test.post_id + test.test_id + '=true');
 								}
 							}
 
 							$goal_button.click( function(){
-								if ( $et_pb_ab_goal.hasClass( 'et_pb_comments_module' ) && ! et_pb_ab_logged_status['con_goal'] ) {
-									et_pb_set_cookie( 365, 'et_pb_ab_comment_log_' + et_pb_custom.page_id + et_pb_custom.unique_test_id + '=true' );
+								if ($et_pb_ab_goal.hasClass('et_pb_comments_module') && !et_pb_ab_logged_status[test.post_id]['con_goal']) {
+									et_pb_set_cookie(365, 'et_pb_ab_comment_log_' + test.post_id + test.test_id + '=true');
 									return;
 								}
 
-								et_pb_maybe_log_event( $et_pb_ab_goal, 'click_goal' );
+								et_pb_maybe_log_event($et_pb_ab_goal, 'click_goal');
 							});
 						}
 					} else {
 						$et_pb_ab_goal.click( function() {
-							if ( $et_pb_ab_goal.hasClass( 'et_pb_shop' ) && ! et_pb_ab_logged_status['con_goal'] ) {
-								et_pb_set_cookie( 365, 'et_pb_ab_shop_log=' + et_pb_custom.page_id + '_' + et_pb_get_subject_id() + '_' + et_pb_custom.unique_test_id );
+							if ($et_pb_ab_goal.hasClass('et_pb_shop') && !et_pb_ab_logged_status[test.post_id]['con_goal']) {
+								et_pb_set_cookie(365, 'et_pb_ab_shop_log=' + test.post_id + '_' + et_ab_subject_id + '_' + test.test_id);
 							}
 
-							et_pb_maybe_log_event( $et_pb_ab_goal, 'click_goal' );
+							et_pb_maybe_log_event($et_pb_ab_goal, 'click_goal');
 						});
 					}
 				}
 			}
 
-			function et_pb_maybe_log_event( $goal_container, event, callback ) {
+			function et_pb_maybe_log_event($goal_container, event, callback) {
 				// Disable AB Testing tracking on VB
 				// AB Testing should not record anything on AB Testing
-				if (is_frontend_builder) {
+				if (isBuilder) {
 					return;
 				}
 
+				var postId    = et_builder_ab_get_test_post_id($goal_container);
 				var log_event = typeof event === 'undefined' ? 'con_goal' : event;
 
-				if ( ! $goal_container.hasClass( 'et_pb_ab_goal' ) || et_pb_ab_logged_status[ log_event ] ) {
+				if (!$goal_container.hasClass('et_pb_ab_goal') || et_pb_ab_logged_status[postId][log_event]) {
 					if ( 'undefined' !== typeof callback ) {
 						callback();
 					}
@@ -4695,19 +5056,19 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				}
 
 				// log the event if it's not logged for current user
-				et_pb_ab_update_stats( log_event, callback );
+				et_pb_ab_update_stats(log_event, postId);
 			}
 
-			function et_pb_ab_update_stats( record_type, set_page_id, set_subject_id, set_test_id, callback ) {
-				var subject_id = typeof set_subject_id === 'undefined' ? et_pb_get_subject_id() : set_subject_id,
-					page_id = typeof set_page_id === 'undefined' ? et_pb_custom.page_id : set_page_id,
-					test_id = typeof set_test_id === 'undefined' ? et_pb_custom.unique_test_id : set_test_id,
-					stats_data = JSON.stringify({ 'test_id' : page_id, 'subject_id' : subject_id, 'record_type' : record_type }),
-					cookie_subject = 'click_goal' === record_type || 'con_short' === record_type ? '' : subject_id;
+			function et_pb_ab_update_stats(record_type, set_page_id, set_subject_id, set_test_id, callback) {
+				var page_id        = typeof set_page_id === 'undefined' ? et_pb_custom.page_id : set_page_id;
+				var subject_id     = typeof set_subject_id === 'undefined' ? et_pb_get_subject_id(page_id) : set_subject_id;
+				var test_id        = typeof set_test_id === 'undefined' ? et_builder_ab_get_test_id(page_id) : set_test_id;
+				var stats_data     = JSON.stringify({'test_id': page_id, 'subject_id': subject_id, 'record_type': record_type});
+				var cookie_subject = 'click_goal' === record_type || 'con_short' === record_type ? '' : subject_id;
 
-				et_pb_set_cookie( 365, 'et_pb_ab_' + record_type + '_' + page_id + test_id + cookie_subject + '=true' );
+				et_pb_set_cookie(365, 'et_pb_ab_' + record_type + '_' + page_id + test_id + cookie_subject + '=true');
 
-				et_pb_ab_logged_status[record_type] = true;
+				et_pb_ab_logged_status[page_id][record_type] = true;
 
 				$.ajax({
 					type: 'POST',
@@ -4724,8 +5085,8 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				} );
 			}
 
-			function et_pb_get_subject_id() {
-				var $subject = $( '.et_pb_ab_subject' );
+			function et_pb_get_subject_id(postId) {
+				var $subject = $('*[class*=et_pb_ab_subject_id-' + postId + '_]');
 
 				// In case no subject found
 				if ( $subject.length <= 0 || $('html').is('.et_fb_preview_active--wireframe_preview') ) {
@@ -4733,12 +5094,76 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				}
 
 				var subject_classname = $subject.attr( 'class' ),
-					subject_id_raw = subject_classname.split( 'et_pb_ab_subject_id-' )[1],
-					subject_id_clean = subject_id_raw.split( ' ' )[0],
-					subject_id_separated = subject_id_clean.split( '_' ),
-					subject_id = subject_id_separated[1];
+						subject_id_raw = subject_classname.split( 'et_pb_ab_subject_id-' )[1],
+						subject_id_clean = subject_id_raw.split( ' ' )[0],
+						subject_id_separated = subject_id_clean.split( '_' ),
+						subject_id = subject_id_separated[1];
 
 				return subject_id;
+			}
+
+			/**
+			 * Get the goal $node for the given AB test post id.
+			 *
+			 * @since 4.0
+			 *
+			 * @param {integer} postId
+			 *
+			 * @returns {object}
+			 */
+			function et_builder_ab_get_goal_node(postId) {
+				return $('.et_pb_ab_goal_id-' + postId);
+			}
+
+			/**
+			 * Get the post id from a goal $node.
+			 *
+			 * @since 4.0
+			 *
+			 * @param {object} $goal
+			 *
+			 * @returns {integer}
+			 */
+			function et_builder_ab_get_test_post_id($goal) {
+				var className = $goal.attr('class');
+				var postId    = parseInt(className.replace(/^.*et_pb_ab_goal_id-(\d+).*$/, '$1'));
+				return !isNaN(postId) ? postId : 0;
+			}
+
+			/**
+			 * Get the test id from a post id.
+			 *
+			 * @since 4.0
+			 *
+			 * @param {integer} postId
+			 *
+			 * @returns {integer}
+			 */
+			function et_builder_ab_get_test_id(postId) {
+				for (var i = 0; i < et_pb_custom.ab_tests; i++) {
+					if (et_pb_custom.ab_tests[i].post_id === postId) {
+						return et_pb_custom.ab_tests[i].test_id;
+					}
+				}
+
+				return et_pb_custom.unique_test_id;
+			}
+
+			/**
+			 * Get current active device based on window width size.
+			 *
+			 * @return {String} View mode.
+			 */
+			function et_pb_get_current_window_mode() {
+				var window_width = $et_window.width();
+				var current_mode = 'desktop';
+				if ( window_width <= 980 && window_width > 479 ) {
+					current_mode = 'tablet';
+				} else if ( window_width <= 479 ) {
+					current_mode = 'phone';
+				}
+
+				return current_mode;
 			}
 
 			function et_pb_set_cookie_expire( days ) {
@@ -4789,9 +5214,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 			window.et_calc_fullscreen_section = function(event, section) {
 				var isResizing = typeof event === 'object' && event.type === 'resize',
-					topWindow = isBuilder ? window.top : window,
 					$et_window = $(topWindow),
-					$appWindow = $(window),
 					$this_section = section || $(this),
 					section_index = $this_section.index('.et_pb_fullscreen'),
 					timeout = isResizing && typeof fullscreen_section_width[section_index] !== 'undefined' && event.target.window_width > fullscreen_section_width[section_index] ? 800 : 0;
@@ -4804,8 +5227,9 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 
 					fullscreen_section_timeout[section_index] = setTimeout( function() {
 					var $body = $( 'body' ),
+					  has_section = $this_section.length,
 						this_section_index = $this_section.index('.et_pb_fullwidth_header'),
-						this_section_offset = $this_section.offset(),
+						this_section_offset = has_section ? $this_section.offset() : {},
 						$header = $this_section.children('.et_pb_fullwidth_header_container'),
 						$header_content = $header.children('.header-content-container'),
 						$header_image = $header.children('.header-image-container'),
@@ -4820,13 +5244,13 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						has_main_header = $main_header.length,
 						main_header_height = has_main_header ? $main_header.outerHeight() : 0,
 						fixed_main_header_height = et_pb_get_fixed_main_header_height(),
-						is_mobile_first_module = this_section_offset.top <= (main_header_height + wpadminbar_height),
+						is_mobile_first_module = 'undefined' !== typeof this_section_offset.top ? this_section_offset.top <= (main_header_height + wpadminbar_height) : false,
 						is_wp_relative_admin_bar = $et_window.width() < 782,
 						is_desktop_view = $et_window.width() > 980,
 						is_tablet_view = $et_window.width() <= 980 && $et_window.width() >= 479,
 						is_phone_view = $et_window.width() < 479,
 						overall_header_height = window.et_is_vertical_nav && is_desktop_view ? wpadminbar_height + top_header_height : wpadminbar_height + top_header_height + main_header_height,
-						is_first_module = this_section_offset.top <= overall_header_height;
+						is_first_module = 'undefined' !== typeof this_section_offset.top ? this_section_offset.top <= overall_header_height : false;
 
 					// In case theme stored the onload main-header height as data-attribute
 					if ( $main_header.attr('data-height-onload') ) {
@@ -4991,10 +5415,15 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					}
 				}, timeout );
 			};
+
 			window.et_calculate_fullscreen_section_size = function(){
 				$( 'section.et_pb_fullscreen' ).each( function(){
 					$.proxy( et_calc_fullscreen_section, $( this ) )();
 				});
+
+				if (isBuilder) {
+					return;
+				}
 
 				clearTimeout(et_calc_fullscreen_section.timeout);
 
@@ -5012,25 +5441,29 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				// so we may need to review this.
 			};
 
-			if (!is_frontend_builder) {
-				$et_window.on('resize', et_calculate_fullscreen_section_size);
-				$et_window.on('et-pb-header-height-calculated', et_calculate_fullscreen_section_size);
+			if (!isBuilder) {
+				$et_window.on( 'resize', et_calculate_fullscreen_section_size );
+				$et_window.on( 'et-pb-header-height-calculated', et_calculate_fullscreen_section_size );
 			}
-
 
 			window.debounced_et_apply_builder_css_parallax = et_pb_debounce(et_apply_builder_css_parallax, 100);
 
 			window.et_pb_parallax_init = function($this_parallax) {
 				var $this_parent = $this_parallax.parent();
-				var topWindow = isBuilder ? window.top : window;
 
 				if ($this_parallax.hasClass('et_pb_parallax_css')) {
 					// Register faux CSS Parallax effect for builder modes with top window scroll
-					if ($('body').hasClass('et-fb')) {
+					if ($('body').hasClass('et-fb') || isTB) {
 						$.proxy(et_apply_builder_css_parallax, $this_parent)();
-
-						$(window).on('scroll.etCssParallaxBackground', $.proxy(et_apply_builder_css_parallax, $this_parent));
-						$(window).on('resize.etCssParallaxBackground', $.proxy(window.debounced_et_apply_builder_css_parallax, $this_parent));
+						if (isTB) {
+							window.top.jQuery('#et-fb-app')
+								.on('scroll.etCssParallaxBackground', $.proxy(et_apply_builder_css_parallax, $this_parent))
+								.on('resize.etCssParallaxBackground', $.proxy(window.debounced_et_apply_builder_css_parallax, $this_parent));
+						} else {
+							$(window)
+								.on('scroll.etCssParallaxBackground', $.proxy(et_apply_builder_css_parallax, $this_parent))
+								.on('resize.etCssParallaxBackground', $.proxy(window.debounced_et_apply_builder_css_parallax, $this_parent));
+						}
 					}
 
 					return;
@@ -5039,7 +5472,11 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				$.proxy(et_parallax_set_height, $this_parent)();
 				$.proxy(et_apply_parallax, $this_parent)();
 
-				$(window).on('scroll.etTrueParallaxBackground', $.proxy(et_apply_parallax, $this_parent));
+				if (isTB) {
+					window.top.jQuery('#et-fb-app').on('scroll.etTrueParallaxBackground', $.proxy(et_apply_parallax, $this_parent));
+				} else {
+					$(window).on('scroll.etTrueParallaxBackground', $.proxy(et_apply_parallax, $this_parent));
+				}
 				$(window).on('resize.etTrueParallaxBackground', $.proxy(et_pb_debounce(et_parallax_set_height, 100), $this_parent));
 				$(window).on('resize.etTrueParallaxBackground', $.proxy(et_pb_debounce(et_apply_parallax, 100), $this_parent));
 
@@ -5090,8 +5527,38 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					if ( $et_pb_circle_counter.length ) {
 						$et_pb_circle_counter.each(function(){
 							var $this_counter = $(this).find('.et_pb_circle_counter_inner');
-							if ( ! $this_counter.is( ':visible' ) || typeof $this_counter.data('easyPieChart') === 'undefined' ) {
+							if ( ! $this_counter.is( ':visible' ) ) {
 								return;
+							}
+
+							// Need to initialize if it has not (e.g visibility set to hidden when the page loaded)
+							if ( 'undefined' === typeof $this_counter.data('easyPieChart') ){
+								window.et_pb_circle_counter_init($this_counter);
+							}
+
+							// Update animation breakpoint variable and generate suffix.
+							var current_mode        = et_pb_get_current_window_mode();
+							et_animation_breakpoint = current_mode;
+							var suffix              = current_mode !== 'desktop' ? '-' + current_mode : '';
+
+							// Update bar background color based on active mode.
+							var bar_color = $this_counter.data( 'bar-bg-color' + suffix );
+							if ( typeof bar_color !== 'undefined' && bar_color !== '' ) {
+								$this_counter.data('easyPieChart').options.barColor = bar_color;
+							}
+
+							// Update track color based on active mode.
+							var track_color = $this_counter.data( 'color' + suffix );
+							if ( typeof track_color !== 'undefined' && track_color !== '' ) {
+								$this_counter.data('easyPieChart').options.trackColor = track_color;
+								$this_counter.trigger('containerWidthChanged');
+							}
+
+							// Update track color alpha based on active mode.
+							var track_color_alpha = $this_counter.data( 'alpha' + suffix );
+							if ( typeof track_color_alpha !== 'undefined' && track_color_alpha !== '' ) {
+								$this_counter.data('easyPieChart').options.trackAlpha = track_color_alpha;
+								$this_counter.trigger('containerWidthChanged');
 							}
 
 							$this_counter.data('easyPieChart').update( $this_counter.data('number-value') );
@@ -5116,7 +5583,15 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					});
 				} /* $et_pb_counter_amount.length */
 
-				if (grid_containers.length || is_frontend_builder) {
+				// Reinit animation.
+				isBuilder && et_pb_reinit_animation();
+
+				// Reupdate maps filters.
+				if ($et_pb_map.length || isBuilder) {
+					et_pb_update_maps_filters($et_pb_map);
+				}
+
+				if (grid_containers.length || isBuilder) {
 					$(grid_containers).each(function () {
 						window.et_pb_set_responsive_grid($(this), '.et_pb_grid_item');
 					});
@@ -5135,7 +5610,7 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				et_calculate_fullscreen_section_size();
 			}
 
-			if (is_frontend_builder) {
+			if (isBuilder) {
 				$(window).one('et_fb_init_app_after', fitvids_slider_fullscreen_init);
 			} else {
 				fitvids_slider_fullscreen_init();
@@ -5243,41 +5718,43 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 			/**
 			 * Add conditional class for search widget in sidebar module
 			 */
-			$('.et_pb_widget_area ' + et_pb_custom.widget_search_selector ).each( function() {
-				var $search_wrap              = $(this),
-					$search_input_submit      = $search_wrap.find('input[type="submit"]'),
-					search_input_submit_text = $search_input_submit.attr( 'value' ),
-					$search_button            = $search_wrap.find('button'),
-					search_button_text       = $search_button.text(),
-					has_submit_button         = $search_input_submit.length || $search_button.length ? true : false,
-					min_column_width          = 150;
+			if(window.et_pb_custom) {
+				$('.et_pb_widget_area ' + window.et_pb_custom.widget_search_selector ).each( function() {
+					var $search_wrap              = $(this),
+							$search_input_submit      = $search_wrap.find('input[type="submit"]'),
+							search_input_submit_text = $search_input_submit.attr( 'value' ),
+							$search_button            = $search_wrap.find('button'),
+							search_button_text       = $search_button.text(),
+							has_submit_button         = $search_input_submit.length || $search_button.length ? true : false,
+							min_column_width          = 150;
 
-				if ( ! $search_wrap.find( 'input[type="text"]' ).length && ! $search_wrap.find( 'input[type="search"]' ).length ) {
-					return;
-				}
+					if ( ! $search_wrap.find( 'input[type="text"]' ).length && ! $search_wrap.find( 'input[type="search"]' ).length ) {
+						return;
+					}
 
-				// Mark no button state
-				if ( ! has_submit_button ) {
-					$search_wrap.addClass( 'et-no-submit-button' );
-				}
+					// Mark no button state
+					if ( ! has_submit_button ) {
+						$search_wrap.addClass( 'et-no-submit-button' );
+					}
 
-				// Mark narrow state
-				if ( $search_wrap.width() < 150 ) {
-					$search_wrap.addClass( 'et-narrow-wrapper' );
-				}
+					// Mark narrow state
+					if ( $search_wrap.width() < 150 ) {
+						$search_wrap.addClass( 'et-narrow-wrapper' );
+					}
 
-				// Fixes issue where theme's search button has no text: treat it as non-existent
-				if ( $search_input_submit.length && ( typeof search_input_submit_text == 'undefined' || search_input_submit_text === '' ) ) {
-					$search_input_submit.remove();
-					$search_wrap.addClass( 'et-no-submit-button' );
-				}
+					// Fixes issue where theme's search button has no text: treat it as non-existent
+					if ( $search_input_submit.length && ( typeof search_input_submit_text == 'undefined' || search_input_submit_text === '' ) ) {
+						$search_input_submit.remove();
+						$search_wrap.addClass( 'et-no-submit-button' );
+					}
 
-				if ( $search_button.length && ( typeof search_button_text == 'undefined' || search_button_text === '' ) ) {
-					$search_button.remove();
-					$search_wrap.addClass( 'et-no-submit-button' );
-				}
+					if ( $search_button.length && ( typeof search_button_text == 'undefined' || search_button_text === '' ) ) {
+						$search_button.remove();
+						$search_wrap.addClass( 'et-no-submit-button' );
+					}
 
-			} );
+				} );
+			}
 
 			// get the content of next/prev page via ajax for modules which have the .et_pb_ajax_pagination_container class
 			$( 'body' ).on( 'click', '.et_pb_ajax_pagination_container .wp-pagenavi a,.et_pb_ajax_pagination_container .pagination a', function() {
@@ -5314,6 +5791,10 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					$current_module.fadeTo( 'slow', 0.2, function() {
 						$current_module.find( '.et_pb_ajax_pagination_container' ).replaceWith( window.et_pb_ajax_pagination_cache[ href + module_class_processed ] );
 						et_pb_set_paginated_content( $current_module, true );
+
+						if ($('.et_pb_tabs').length) {
+							window.et_pb_tabs_init($('.et_pb_tabs'));
+						}
 					} );
 				} else {
 					// update cache for currently opened page if not set yet
@@ -5322,18 +5803,33 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					}
 
 					$current_module.fadeTo( 'slow', 0.2, function() {
-						jQuery.get( href, function( page ) {
-							var $page = jQuery( page );
+						var paginate = function (page) {
+							var $page    = jQuery(page);
 							// Find custom style
-							var $style = $page.filter( '#et-builder-module-design-cached-inline-styles' );
+							var $style   = $page.filter('#et-builder-module-design-cached-inline-styles');
 							// Make sure it's included in the new content
-							var $content = $page.find( module_class_processed + ' .et_pb_ajax_pagination_container' ).prepend( $style );
+							var $content = $page.find(module_class_processed + ' .et_pb_ajax_pagination_container').prepend($style);
 							// Remove animations to prevent blocks from not showing
-							et_remove_animation( $content.find( '.et_animated' ) );
+							et_remove_animation($content.find('.et_animated'));
 							// Replace current page with new one
-							$current_module.find( '.et_pb_ajax_pagination_container' ).replaceWith( $content );
-							window.et_pb_ajax_pagination_cache[ href + module_class_processed ] = $content;
-							et_pb_set_paginated_content( $current_module, false );
+							$current_module.find('.et_pb_ajax_pagination_container').replaceWith($content);
+							window.et_pb_ajax_pagination_cache[href + module_class_processed] = $content;
+							et_pb_set_paginated_content($current_module, false);
+
+							if ($('.et_pb_tabs').length) {
+								window.et_pb_tabs_init($('.et_pb_tabs'));
+							}
+						};
+
+						jQuery.ajax({
+							url: href,
+							success: paginate,
+							error: function (page) {
+								if (404 === page.status && jQuery('body.error404').length > 0) {
+									// Special case if a blog module is being displayed on the 404 page.
+									paginate(page.responseText);
+								}
+							}
 						});
 					});
 				}
@@ -5427,9 +5923,15 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 			}
 
 			window.et_pb_search_init = function( $search ) {
+				// Update animation breakpoint variable and generate suffix.
+				var current_mode        = et_pb_get_current_window_mode();
+				et_animation_breakpoint = current_mode;
+				var suffix              = current_mode !== 'desktop' ? '-' + current_mode : '';
+
 				var $input_field = $search.find( '.et_pb_s' );
 				var $button = $search.find( '.et_pb_searchsubmit' );
-				var input_padding = $search.hasClass( 'et_pb_text_align_right' ) ? 'paddingLeft' : 'paddingRight';
+				var input_padding = $search.hasClass( 'et_pb_text_align_right' + suffix ) ? 'paddingLeft' : 'paddingRight';
+				var reverse_input_padding = input_padding === 'paddingLeft' ? 'paddingRight' : 'paddingLeft';
 				var disabled_button = $search.hasClass( 'et_pb_hide_search_button' );
 				var buttonHeight = $button.outerHeight();
 				var buttonWidth = $button.outerWidth();
@@ -5443,6 +5945,8 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 				}
 
 				if ( ! disabled_button ) {
+					// Reset reverse input padding.
+					$input_field.css( reverse_input_padding, '' );
 					$input_field.css( input_padding, buttonWidth + 10 );
 				}
 
@@ -5515,6 +6019,16 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						$comments_module_button.attr( 'data-icon', $comments_module.attr( 'data-icon' ) );
 						$comments_module_button.addClass( 'et_pb_custom_button_icon' );
 					}
+
+					if ( typeof $comments_module.attr( 'data-icon-tablet' ) !== 'undefined' && $comments_module.attr( 'data-icon-tablet' ) !== '' ) {
+						$comments_module_button.attr( 'data-icon-tablet', $comments_module.attr( 'data-icon-tablet' ) );
+						$comments_module_button.addClass( 'et_pb_custom_button_icon' );
+					}
+
+					if ( typeof $comments_module.attr( 'data-icon-phone' ) !== 'undefined' && $comments_module.attr( 'data-icon-phone' ) !== '' ) {
+						$comments_module_button.attr( 'data-icon-phone', $comments_module.attr( 'data-icon-phone' ) );
+						$comments_module_button.addClass( 'et_pb_custom_button_icon' );
+					}
 				}
 			};
 
@@ -5526,8 +6040,13 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					et_pb_comments_init( $comments_module );
 				});
 			}
-
-			window.et_fix_pricing_currency_position();
+			
+			// Wait the page fully loaded to make sure all the css applied before calculating sizes
+			document.onreadystatechange = function () {
+				if ( 'complete' === document.readyState ) {
+					window.et_fix_pricing_currency_position();
+				}
+			}
 
 			$('.et_pb_contact_form_container, .et_pb_newsletter_custom_fields').each( function() {
 				var $form = $(this);
@@ -5638,6 +6157,11 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 								}
 							}
 
+							// Need to `stripslashes` value to match with rule value
+							if (field_value && 'string' === typeof field_value) {
+								field_value = field_value.replace(/\\(.)/g, '$1');
+							}
+
 							// Check if the value IS matching (if it has to)
 							if ( 'is' === check_type && field_value !== check_value ) {
 								continue;
@@ -5648,8 +6172,15 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 								continue;
 							}
 
-							// Create the contains/not contains regular expresion
+							/**
+							 * Create the contains/not contains regular expresion
+							 * Need to escape a character that has special meaning inside a regular expression
+							 */
 							var containsRegExp = new RegExp( check_value, 'i' );
+
+							if ('string' === typeof check_value) {
+								containsRegExp = new RegExp( check_value.replace(/[\\^$*+?.()|[\]{}]/g, '\\$&'), 'i' );
+							}
 
 							// Check if the value IS containing
 							if ( 'contains' === check_type && ! field_value.match( containsRegExp ) ) {
@@ -5715,11 +6246,11 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 					} );
 			}
 
-			// Adjust z-index for animated full-width menu modules
+			// Adjust z-index for animated menu modules.
 			if ( 'undefined' !== typeof et_animation_data && et_animation_data.length > 0 ) {
 
 				// Store the maximum z-index that should be applied
-				var maxFullwidthMenuIndex = 0;
+				var maxMenuIndex = 0;
 
 				// Increase the maximum z-index by one for each module
 				for ( var i = 0; i < et_animation_data.length; i++ ) {
@@ -5729,19 +6260,21 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 						continue;
 					}
 
-					if ( $('.' + animation_entry.class ).hasClass('et_pb_fullwidth_menu') ) {
-						maxFullwidthMenuIndex++;
+					var $animationEntry = $('.' + animation_entry.class);
+
+					if ($animationEntry.hasClass('et_pb_menu') || $animationEntry.hasClass('et_pb_fullwidth_menu')) {
+						maxMenuIndex++;
 					}
 				}
 
-				var $fullWidthMenus = $('.et_pb_fullwidth_menu');
+				var $menus = $('.et_pb_menu, .et_pb_fullwidth_menu');
 
-				$fullWidthMenus.each(function() {
-					var $fullWidthMenu = $(this);
+				$menus.each(function() {
+					var $menu = $(this);
 
 					// When the animation ends apply z-index in descending order to each of the animated modules
-					$fullWidthMenu.on('webkitAnimationEnd oanimationend msAnimationEnd animationend', function() {
-						$fullWidthMenu.css('z-index', maxFullwidthMenuIndex - $fullWidthMenu.index('.et_pb_fullwidth_menu') );
+					$menu.on('webkitAnimationEnd oanimationend msAnimationEnd animationend', function() {
+						$menu.css('z-index', maxMenuIndex - $menu.index('.et_pb_menu, .et_pb_fullwidth_menu') );
 					});
 				});
 			}
@@ -5753,75 +6286,46 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 		});
 	};
 
-	// Modification of underscore's _.debounce()
-	// Underscore.js 1.8.3
-	// http://underscorejs.org
-	// (c) 2009-2015 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-	// Underscore may be freely distributed under the MIT license.
-	window.et_pb_debounce = function(func, wait, immediate) {
-		var timeout, args, context, timestamp, result;
-
-		var now = Date.now || new Date().getTime();
-
-		var later = function() {
-			var last = now - timestamp;
-
-			if (last < wait && last >= 0) {
-				timeout = setTimeout(later, wait - last);
-			} else {
-				timeout = null;
-				if (!immediate) {
-					result = func.apply(context, args);
-					if (!timeout) context = args = null;
-				}
-			}
-		};
-
-		return function() {
-			context = this;
-			args = arguments;
-			timestamp = now;
-			var callNow = immediate && !timeout;
-			if (!timeout) timeout = setTimeout(later, wait);
-			if (callNow) {
-				result = func.apply(context, args);
-				context = args = null;
-			}
-
-			return result;
-		};
-	};
-
-	if ( et_pb_custom.is_ab_testing_active && 'yes' === et_pb_custom.is_cache_plugin_active ) {
+	if ( window.et_pb_custom && window.et_pb_custom.is_ab_testing_active && 'yes' === window.et_pb_custom.is_cache_plugin_active ) {
 		// update the window.et_load_event_fired variable to initiate the scripts properly
 		$( window ).load( function() {
 			window.et_load_event_fired = true;
 		});
 
-		// get the subject id for current visitor and display it
-		// this ajax request performed only if AB Testing is enabled and cache plugin active
-		$.ajax( {
-			type: "POST",
-			url: et_pb_custom.ajaxurl,
-			dataType: "json",
-			data:
-			{
-				action : 'et_pb_ab_get_subject_id',
-				et_frontend_nonce : et_pb_custom.et_frontend_nonce,
-				et_pb_ab_test_id : et_pb_custom.page_id
-			},
-			success: function( subject_data ) {
-				if ( subject_data ) {
-					// append the subject content to appropriate placeholder
-					$( '.et_pb_subject_placeholder_id_' + subject_data.id ).after( subject_data.content );
-					// remove all other placeholders from the DOM
-					$( '.et_pb_subject_placeholder' ).remove();
+		var pendingRequests = et_pb_custom.ab_tests.length;
 
-					// init all scripts once the subject loaded
-					window.et_pb_init_modules();
-					$( 'body' ).trigger( 'et_pb_ab_subject_ready' );
+		$.each(et_pb_custom.ab_tests, function (index, test) {
+			// get the subject id for current visitor and display it
+			// this ajax request performed only if AB Testing is enabled and cache plugin active
+			$.ajax({
+				type: "POST",
+				url: et_pb_custom.ajaxurl,
+				dataType: "json",
+				data: {
+					action: 'et_pb_ab_get_subject_id',
+					et_frontend_nonce: et_pb_custom.et_frontend_nonce,
+					et_pb_ab_test_id: test.post_id
+				},
+				success: function(subject_data) {
+					if (subject_data) {
+						// Append the subject content to appropriate placeholder.
+						var $placeholder = $('.et_pb_subject_placeholder_id_' + test.post_id + '_' + subject_data.id);
+						$placeholder.after(subject_data.content);
+						$placeholder.remove();
+					}
+
+					pendingRequests -= 1;
+
+					if (pendingRequests <= 0) {
+						// remove all other placeholders from the DOM
+						$('.et_pb_subject_placeholder').remove();
+
+						// init all scripts once the subject loaded
+						window.et_pb_init_modules();
+						$('body').trigger('et_pb_ab_subject_ready');
+					}
 				}
-			}
+			});
 		});
 	} else {
 		window.et_pb_init_modules();
@@ -5831,11 +6335,18 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 		// Hover transition are disabled for section dividers to prevent visual glitches while document is loading,
 		// we can enable them again now.
 		$('.et_pb_top_inside_divider.et-no-transition, .et_pb_bottom_inside_divider.et-no-transition').removeClass('et-no-transition');
-		( et_pb_box_shadow_elements||[] ).map(et_pb_box_shadow_apply_overlay);
+
+		// Set a delay just to make sure all modules are ready before we append box shadow container.
+		// Similar approach exists on VB custom CSS output.
+		setTimeout(function() {
+			(window.et_pb_box_shadow_elements||[]).map(et_pb_box_shadow_apply_overlay);
+		}, 0);
 	});
 
 	$(window).load(function() {
 		var $body = $('body');
+		// set load event here because safari sometimes will not run load events registered on et_pb_init_modules.
+		window.et_load_event_fired = true;
 		// fix Safari letter-spacing bug when styles applied in `head`
 		// Trigger styles redraw by changing body display property to differentvalue and reverting it back to original.
 		if ($body.hasClass('safari')) {
@@ -5870,6 +6381,59 @@ var isBuilder = 'object' === typeof window.ET_Builder;
                     $wc.css({opacity: opacity});
                 }, 0);
 			}
+		}
+
+		/*
+		 * Reinit Star Ratings in Woo Modules.
+		 * Deafuilt Woocommerce scripts do not init Star Ratings correctly
+		 * if there are more than 1 place with stars on page
+		 * Run this on .load event after woocommerce modules are ready and processed.
+		 */
+		if ($('.et_pb_module #rating').length > 0) {
+			$('.et_pb_module #rating').each( function(){
+				window.et_pb_init_woo_star_rating($(this));
+			});
+		}
+
+		/*
+		 * Apply Custom icons to Woo Module Buttons.
+		 * All the buttons generated in WooCommerce template and we cannot add custom attributes
+		 * Therefore we have to use js to add it.
+		 */
+		if ($('.et_pb_woo_custom_button_icon').length > 0) {
+			$('.et_pb_woo_custom_button_icon').each(function() {
+				var $thisModule        = $(this);
+				var buttonClass        = $thisModule.data('button-class');
+				var $buttonEl          = $thisModule.find('.' + buttonClass);
+				var buttonIcon         = $thisModule.attr('data-button-icon');
+				var buttonIconTablet   = $thisModule.attr('data-button-icon-tablet');
+				var buttonIconPhone    = $thisModule.attr('data-button-icon-phone');
+				var buttonClassName    = 'et_pb_promo_button et_pb_button';
+
+				$buttonEl.addClass(buttonClassName);
+
+				if (buttonIcon || buttonIconTablet || buttonIconPhone) {
+					$buttonEl.addClass('et_pb_custom_button_icon');
+					$buttonEl.attr('data-icon', buttonIcon);
+					$buttonEl.attr('data-icon-tablet', buttonIconTablet);
+					$buttonEl.attr('data-icon-phone', buttonIconPhone);
+				}
+			});
+		}
+
+		/**
+		 * Hide empty WooCommerce Meta module
+		 * Meta module component is toggled using classname, thus js visibility check to determine
+		 * whether the module is "empty" (visibility-wise) or not
+		 */
+		if ($('.et_pb_wc_meta').length > 0) {
+			$('.et_pb_wc_meta').each(function() {
+				var $thisModule = $(this);
+
+				if ('' === $thisModule.find('.product_meta span:visible').text()) {
+					$thisModule.addClass('et_pb_wc_meta_empty');
+				}
+			});
 		}
 	});
 
@@ -5943,4 +6507,932 @@ var isBuilder = 'object' === typeof window.ET_Builder;
 		}
 	}
 	et_fix_html_margin();
+
+	// Menu module.
+	function menuModuleOpenSearch($module) {
+		var $menu    = $module.find('.et_pb_menu__wrap:first');
+		var $search  = $module.find('.et_pb_menu__search-container:first');
+		var $input   = $module.find('.et_pb_menu__search-input:first');
+		var $logo    = $module.find('.et_pb_row > .et_pb_menu__logo-wrap:first, .et_pb_menu_inner_container > .et_pb_menu__logo-wrap:first');
+		var isMobile = $(window).width() <= 980;
+
+		if ($search.hasClass('et_pb_is_animating')) {
+			return;
+		}
+
+		// Close the menu if it is open.
+		$menu.find('.mobile_nav.opened').removeClass('opened').addClass('closed');
+		$menu.find('.et_mobile_menu').hide();
+
+		$menu.removeClass('et_pb_menu__wrap--visible').addClass('et_pb_menu__wrap--hidden');
+		$search.removeClass('et_pb_menu__search-container--hidden et_pb_menu__search-container--disabled').addClass('et_pb_menu__search-container--visible et_pb_is_animating');
+
+		// Adjust spacing based on layout and the logo used.
+		$search.css('padding-top', 0);
+		if ($module.hasClass('et_pb_menu--style-left_aligned')) {
+			$search.css('padding-left', $logo.width());
+		} else {
+			var logoHeight = $logo.height();
+
+			$search.css('padding-left', 0);
+			if (isMobile || $module.hasClass('et_pb_menu--style-centered')) {
+				// 30 = logo margin-bottom.
+				$search.css('padding-top', logoHeight > 0 ? logoHeight + 30 : 0);
+			}
+		}
+
+		$input.css('font-size', $module.find('.et-menu-nav li a:first').css('font-size'));
+		$input.focus();
+
+		setTimeout(function() {
+			$menu.addClass('et_pb_no_animation');
+			$search.addClass('et_pb_no_animation').removeClass('et_pb_is_animating');
+		}, 1000);
+	}
+
+	function menuModuleCloseSearch($module) {
+		var $menu   = $module.find('.et_pb_menu__wrap:first');
+		var $search = $module.find('.et_pb_menu__search-container:first');
+		var $input  = $module.find('.et_pb_menu__search-input:first');
+
+		if ($search.hasClass('et_pb_is_animating')) {
+			return;
+		}
+
+		$menu.removeClass('et_pb_menu__wrap--hidden').addClass('et_pb_menu__wrap--visible');
+		$search.removeClass('et_pb_menu__search-container--visible').addClass('et_pb_menu__search-container--hidden et_pb_is_animating');
+		$input.blur();
+
+		setTimeout(function() {
+			$search.removeClass('et_pb_is_animating').addClass('et_pb_menu__search-container--disabled');
+		}, 1000);
+	}
+
+	function menuModuleCloneInlineLogo($module) {
+		var $logo = $module.find('.et_pb_menu__logo-wrap:first');
+
+		if (0 === $logo.length) {
+			return;
+		}
+
+		var $menu = $module.find('.et_pb_menu__menu:first');
+
+		if (0 === $menu.length || $menu.find('.et_pb_menu__logo').length > 0) {
+			return;
+		}
+
+		var li = window.et_pb_menu_inject_inline_centered_logo($menu.get(0));
+
+		if (null === li) {
+			return;
+		}
+
+		$(li).empty().append($logo.clone());
+	}
+
+	$(document).on('click', '.et_pb_menu__search-button', function () {
+		menuModuleOpenSearch($(this).closest('.et_pb_module'));
+	});
+
+	$(document).on('click', '.et_pb_menu__close-search-button', function () {
+		menuModuleCloseSearch($(this).closest('.et_pb_module'));
+	});
+
+	$(document).on('blur', '.et_pb_menu__search-input', function () {
+		menuModuleCloseSearch($(this).closest('.et_pb_module'));
+	});
+
+	$(document).ready(function () {
+		$('.et_pb_menu--style-inline_centered_logo, .et_pb_fullwidth_menu--style-inline_centered_logo').each(function () {
+			menuModuleCloneInlineLogo($(this));
+		});
+	});
+
+	$(document).on('ready', window.et_pb_reposition_menu_module_dropdowns);
+	$(window).on('resize', window.et_pb_reposition_menu_module_dropdowns);
+
+	// Muti View Data Handler (Responsive + Hover)
+	var et_multi_view = {
+		contexts: ['content', 'attrs', 'styles', 'classes', 'visibility'],
+		windowWidth: $(window).width(),
+		init: function () {
+			$('#main-header, #main-footer').off('mouseenter', et_multi_view.resetHoverStateHandler);
+			$('#main-header, #main-footer').on('mouseenter', et_multi_view.resetHoverStateHandler);
+
+			$('[data-et-multi-view]').each(function () {
+				var data = et_multi_view.getData($(this));
+
+				et_multi_view.normalStateHandler(data);
+
+				if (data.$hoverSelector && data.$hoverSelector.length) {
+					data.$hoverSelector.off('touchstart touchend', et_multi_view.touchStateHandler);
+					data.$hoverSelector.on('touchstart touchend', et_multi_view.touchStateHandler);
+
+					data.$hoverSelector.off('mouseenter mouseleave', et_multi_view.hoverStateHandler);
+					data.$hoverSelector.on('mouseenter mouseleave', et_multi_view.hoverStateHandler);
+				}
+			});
+		},
+		normalStateHandler: function (data) {
+			if (!data || et_multi_view.isEmptyObject(data.normalState)) {
+				return;
+			}
+
+			et_multi_view.callbackHandlerDefault(data.normalState, data.$target, data.$source, data.slug);
+		},
+		touchStateHandler: function (event) {
+			var $hoverSelector = $(this);
+
+			if ('touchend' === event.type) {
+				setTimeout(function () {
+					$hoverSelector.on('mouseenter mouseleave', et_multi_view.hoverStateHandler);
+				}, 1)
+			} else if (event.type === 'touchstart') {
+				$hoverSelector.off('mouseenter mouseleave', et_multi_view.hoverStateHandler);
+			}
+		},
+		hoverStateHandler: function (event) {
+			var $hoverSelector = $(this);
+			var datas = [];
+
+			if ($hoverSelector.data('etMultiView')) {
+				datas.push(et_multi_view.getData($hoverSelector));
+			}
+
+			$hoverSelector.find('[data-et-multi-view]').each(function () {
+				datas.push(et_multi_view.getData($(this)));
+			});
+
+			if (event.type === 'mouseenter' && !$hoverSelector.hasClass('et_multi_view__hovered')) {
+				et_multi_view.resetHoverStateHandler($hoverSelector);
+				$hoverSelector.addClass('et_multi_view__hovered');
+
+				for (var index = 0; index < datas.length; index++) {
+					var data = datas[index];
+
+					if (data && !et_multi_view.isEmptyObject(data.normalState) && !et_multi_view.isEmptyObject(data.hoverState)) {
+						et_multi_view.callbackHandlerDefault(data.hoverState, data.$target, data.$source, data.slug);
+					}
+				}
+			} else if (event.type === 'mouseleave' && $hoverSelector.hasClass('et_multi_view__hovered')) {
+				for (var index = 0; index < datas.length; index++) {
+					var data = datas[index];
+
+					if (data && !et_multi_view.isEmptyObject(data.normalState) && !et_multi_view.isEmptyObject(data.hoverState)) {
+						et_multi_view.callbackHandlerDefault(data.normalState, data.$target, data.$source, data.slug);
+					}
+				}
+
+				$hoverSelector.removeClass('et_multi_view__hovered');
+			}
+		},
+		resetHoverStateHandler: function ($exclude) {
+			$('[data-et-multi-view]').each(function () {
+				var data = et_multi_view.getData($(this));
+
+				if (data &&
+					data.$hoverSelector &&
+					data.$hoverSelector.length &&
+					data.$hoverSelector.hasClass('et_multi_view__hovered') &&
+					!data.$hoverSelector.is($exclude)
+				) {
+					data.$hoverSelector.trigger('mouseleave');
+				}
+			});
+		},
+		getData: function ($source) {
+			if (!$source || !$source.length) {
+				return false;
+			}
+
+			var screenMode = et_multi_view.getScreenMode();
+			var data = $source.data('etMultiView');
+
+			if (!data) {
+				return false;
+			}
+
+			if (typeof data === 'string') {
+				data = et_multi_view.tryParseJSON(data);
+			}
+
+			if (!data || !data.schema || !data.slug) {
+				return false;
+			}
+
+			var $target = data.target ? $(data.target) : $source;
+
+			if (!$target || !$target.length) {
+				return false;
+			}
+
+			var normalState = {};
+			var hoverState = {};
+
+			for (var i = 0; i < et_multi_view.contexts.length; i++) {
+				var context = et_multi_view.contexts[i];
+
+				// Set context data.
+				if (data.schema && data.schema.hasOwnProperty(context)) {
+					// Set normal state context data.
+					if (data.schema[context].hasOwnProperty(screenMode)) {
+						normalState[context] = data.schema[context][screenMode];
+					} else {
+						if (screenMode === 'tablet' && data.schema[context].hasOwnProperty('desktop')) {
+							normalState[context] = data.schema[context].desktop;
+						} else if (screenMode === 'phone' && data.schema[context].hasOwnProperty('tablet')) {
+							normalState[context] = data.schema[context].tablet;
+						} else if (screenMode === 'phone' && data.schema[context].hasOwnProperty('desktop')) {
+							normalState[context] = data.schema[context].desktop;
+						}
+					}
+
+					// Set hover state context data.
+					if (data.schema[context].hasOwnProperty('hover')) {
+						hoverState[context] = data.schema[context].hover;
+					}
+				}
+			}
+
+			var $hoverSelector = data.hover_selector ? $(data.hover_selector) : false;
+
+			if (!$hoverSelector || !$hoverSelector.length) {
+				$hoverSelector = $source.hasClass('.et_pb_module') ? $source : $source.closest('.et_pb_module');
+			}
+
+			return {
+				normalState: normalState,
+				hoverState: hoverState,
+				$target: $target,
+				$source: $source,
+				$hoverSelector: $hoverSelector,
+				slug: data.slug,
+				screenMode: screenMode
+			};
+		},
+		callbackHandlerDefault: function (data, $target, $source, slug) {
+			var callbackHandlerCustom = et_multi_view.getCallbackHandlerCustom(slug, data, $target);
+
+			if (callbackHandlerCustom && typeof callbackHandlerCustom === 'function') {
+				return callbackHandlerCustom(data, $target, $source, slug);
+			}
+
+			var updated = {};
+
+			if (data.hasOwnProperty('content')) {
+				updated.content = et_multi_view.updateContent(data.content, $target, $source);
+			}
+
+			if (data.hasOwnProperty('attrs')) {
+				updated.attrs = et_multi_view.updateAttrs(data.attrs, $target, $source);
+			}
+
+			if (data.hasOwnProperty('styles')) {
+				updated.styles = et_multi_view.updateStyles(data.styles, $target, $source);
+			}
+
+			if (data.hasOwnProperty('classes')) {
+				updated.classes = et_multi_view.updateClasses(data.classes, $target, $source);
+			}
+
+			if (data.hasOwnProperty('visibility')) {
+				updated.visibility = et_multi_view.updateVisibility(data.visibility, $target, $source);
+			}
+
+			return et_multi_view.isEmptyObject(updated) ? false : updated;
+		},
+		callbackHandlerCounter: function (data, $target, $source, slug) {
+			var updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+
+			if (updated && updated.attrs && updated.attrs.hasOwnProperty('data-width')) {
+				window.et_bar_counters_init($target);
+			}
+		},
+		callbackHandlerNumberCounter: function (data, $target, $source, slug) {
+			if ($target.hasClass('title')) {
+				return et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+			}
+
+			var attrs = data.attrs || false;
+
+			if (!attrs) {
+				return;
+			}
+
+			if (attrs.hasOwnProperty('data-percent-sign')) {
+				et_multi_view.updateContent(attrs['data-percent-sign'], $target.find('.percent-sign'), $source);
+			}
+
+			if (attrs.hasOwnProperty('data-number-value')) {
+				var $the_counter = $target.closest('.et_pb_number_counter');
+				var numberValue = attrs['data-number-value'] || 50;
+				var numberSeparator = attrs['data-number-separator'] || '';
+
+				var updated = et_multi_view.updateAttrs({
+					'data-number-value': numberValue,
+					'data-number-separator': numberSeparator,
+				}, $the_counter, $source);
+
+				if (updated && $the_counter.data('easyPieChart')) {
+					$the_counter.data('easyPieChart').update(numberValue);
+				}
+			}
+		},
+		callbackHandlerCircleCounter: function (data, $target, $source, slug) {
+			if (!$target.hasClass('et_pb_circle_counter_inner')) {
+				return et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+			}
+
+			var attrs = data.attrs || false;
+
+			if (!attrs) {
+				return;
+			}
+
+			if (attrs.hasOwnProperty('data-percent-sign')) {
+				et_multi_view.updateContent(attrs['data-percent-sign'], $target.find('.percent-sign'), $source);
+			}
+
+			if (attrs.hasOwnProperty('data-number-value')) {
+				var $the_counter = $target.closest('.et_pb_circle_counter_inner');
+				var numberValue = attrs['data-number-value'];
+
+				var attrsUpdated = et_multi_view.updateAttrs({
+					'data-number-value': numberValue,
+				}, $the_counter, $source);
+
+				if (attrsUpdated && $the_counter.data('easyPieChart')) {
+					window.et_pb_circle_counter_init($the_counter);
+					$the_counter.data('easyPieChart').update(numberValue);
+				}
+			}
+		},
+		callbackHandlerSlider: function (data, $target, $source, slug) {
+			var updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+
+			if ($target.hasClass('et_pb_module') && updated && updated.classes) {
+				if (updated.classes.add && updated.classes.add.indexOf('et_pb_slider_no_arrows') !== -1) {
+					$target.find('.et-pb-slider-arrows').addClass('et_multi_view_hidden');
+				}
+
+				if (updated.classes.remove && updated.classes.remove.indexOf('et_pb_slider_no_arrows') !== -1) {
+					$target.find('.et-pb-slider-arrows').removeClass('et_multi_view_hidden');
+				}
+
+				if (updated.classes.add && updated.classes.add.indexOf('et_pb_slider_no_pagination') !== -1) {
+					$target.find('.et-pb-controllers').addClass('et_multi_view_hidden');
+				}
+
+				if (updated.classes.remove && updated.classes.remove.indexOf('et_pb_slider_no_pagination') !== -1) {
+					$target.find('.et-pb-controllers').removeClass('et_multi_view_hidden');
+				}
+			}
+		},
+		callbackHandlerPostSlider: function (data, $target, $source, slug) {
+			var updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+
+			if ($target.hasClass('et_pb_module') && updated && updated.classes) {
+				if (updated.classes.add && updated.classes.add.indexOf('et_pb_slider_no_arrows') !== -1) {
+					$target.find('.et-pb-slider-arrows').addClass('et_multi_view_hidden');
+				}
+
+				if (updated.classes.remove && updated.classes.remove.indexOf('et_pb_slider_no_arrows') !== -1) {
+					$target.find('.et-pb-slider-arrows').removeClass('et_multi_view_hidden');
+				}
+
+				if (updated.classes.add && updated.classes.add.indexOf('et_pb_slider_no_pagination') !== -1) {
+					$target.find('.et-pb-controllers').addClass('et_multi_view_hidden');
+				}
+
+				if (updated.classes.remove && updated.classes.remove.indexOf('et_pb_slider_no_pagination') !== -1) {
+					$target.find('.et-pb-controllers').removeClass('et_multi_view_hidden');
+				}
+			}
+		},
+		callbackHandlerVideoSlider: function (data, $target, $source, slug) {
+			var updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+
+			if ($target.hasClass('et_pb_slider') && updated && updated.classes) {
+				if (updated.classes.add && updated.classes.add.indexOf('et_pb_slider_no_arrows') !== -1) {
+					$target.find('.et-pb-slider-arrows').addClass('et_multi_view_hidden');
+				}
+
+				if (updated.classes.remove && updated.classes.remove.indexOf('et_pb_slider_no_arrows') !== -1) {
+					$target.find('.et-pb-slider-arrows').removeClass('et_multi_view_hidden');
+				}
+
+				var isInitSlider = function () {
+					if (updated.classes.add && updated.classes.add.indexOf('et_pb_slider_dots') !== -1) {
+						return 'et_pb_slider_dots';
+					}
+
+					if (updated.classes.add && updated.classes.add.indexOf('et_pb_slider_carousel') !== -1) {
+						return 'et_pb_slider_carousel';
+					}
+
+					return false;
+				};
+
+				var sliderControl = isInitSlider();
+
+				if (sliderControl) {
+					var sliderApi = $target.data('et_pb_simple_slider');
+
+					if (typeof sliderApi === 'object') {
+						sliderApi.et_slider_destroy();
+					}
+
+					et_pb_slider_init($target);
+
+					if (sliderControl === 'et_pb_slider_carousel') {
+						$target.siblings('.et_pb_carousel').et_pb_simple_carousel({
+							slide_duration: 1000
+						});
+					}
+				}
+			}
+		},
+		callbackHandlerSliderItem: function (data, $target, $source, slug) {
+			if (!$target.hasClass('et_pb_slide_video') && !$target.is('img')) {
+				return et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+			}
+
+			if ($target.hasClass('et_pb_slide_video')) {
+				var $contentNew = data && data.content ? $(data.content) : false;
+				var $contentOld = $target.html().indexOf('fluid-width-video-wrapper') !== -1
+					? $($target.find('.fluid-width-video-wrapper').html())
+					: $($target.html());
+
+				if (!$contentNew || !$contentOld) {
+					return;
+				}
+				var updated = false;
+
+				if ($contentNew.hasClass('wp-video') && $contentOld.hasClass('wp-video')) {
+					var isVideoNeedUpdate = function () {
+						if ($contentNew.find('source').length !== $contentOld.find('source').length) {
+							return true;
+						}
+
+						var isDifferentAttr = false;
+
+						$contentNew.find('source').each(function (index) {
+							var $contentOldSource = $contentOld.find('source').eq(index);
+
+							if ($(this).attr('src') !== $contentOldSource.attr('src')) {
+								isDifferentAttr = true;
+							}
+						});
+
+						return isDifferentAttr;
+					};
+
+					if (isVideoNeedUpdate()) {
+						updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+					}
+				} else if ($contentNew.is('iframe') && $contentOld.is('iframe') && $contentNew.attr('src') !== $contentOld.attr('src')) {
+					updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+				} else if (($contentNew.hasClass('wp-video') && $contentOld.is('iframe')) || ($contentNew.is('iframe') && $contentOld.hasClass('wp-video'))) {
+					updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+				}
+
+				if (updated && updated.content) {
+					if ($contentNew.is('iframe')) {
+						$target.closest('.et_pb_module').fitVids();
+					} else {
+						var videoWidth = $contentNew.find('video').attr('width');
+						var videoHeight = $contentNew.find('video').attr('height');
+						var videContainerWidth = $target.width();
+						var videContainerHeight = (videContainerWidth / videoWidth) * videoHeight;
+
+						$target.find('video').mediaelementplayer({
+							videoWidth: parseInt(videContainerWidth),
+							videoHeight: parseInt(videContainerHeight),
+							autosizeProgress: false,
+							success: function (mediaElement, domObject) {
+								var $domObject = $(domObject);
+								var videoMarginTop = (videContainerHeight - $domObject.height()) + $(mediaElement).height();
+
+								$domObject.css('margin-top', videoMarginTop + 'px');
+							},
+						});
+					}
+				}
+			} else if ($target.is('img')) {
+				var updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+
+				if (updated && updated.attrs && updated.attrs.src) {
+					var $slider = $target.closest('.et_pb_module');
+
+					$target.css('visibility', 'hidden');
+
+					et_fix_slider_height($slider);
+
+					setTimeout(function () {
+						et_fix_slider_height($slider);
+						$target.css('visibility', 'visible');
+					}, 100);
+				}
+			}
+		},
+		callbackHandlerVideo: function (data, $target, $source, slug) {
+			if ($target.hasClass('et_pb_video_overlay')) {
+				return et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+			}
+
+			var updated = false;
+
+			var $contentNew = data && data.content ? $(data.content) : false;
+			var $contentOld = $target.html().indexOf('fluid-width-video-wrapper') !== -1
+				? $($target.find('.fluid-width-video-wrapper').html())
+				: $($target.html());
+
+			if (!$contentNew || !$contentOld) {
+				return;
+			}
+
+			if ($contentNew.is('video') && $contentOld.is('video')) {
+				var isVideoNeedUpdate = function () {
+					if ($contentNew.find('source').length !== $contentOld.find('source').length) {
+						return true;
+					}
+
+					var isDifferentAttr = false;
+
+					$contentNew.find('source').each(function (index) {
+						var $contentOldSource = $contentOld.find('source').eq(index);
+
+						if ($(this).attr('src') !== $contentOldSource.attr('src')) {
+							isDifferentAttr = true;
+						}
+					});
+
+					return isDifferentAttr;
+				};
+
+				if (isVideoNeedUpdate()) {
+					updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+				}
+			} else if ($contentNew.is('iframe') && $contentOld.is('iframe') && $contentNew.attr('src') !== $contentOld.attr('src')) {
+				updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+			} else if (($contentNew.is('video') && $contentOld.is('iframe')) || ($contentNew.is('iframe') && $contentOld.is('video'))) {
+				updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+			}
+
+			if (updated && updated.content) {
+				if ($contentNew.is('iframe') && $.fn.fitVids) {
+					$target.fitVids();
+				}
+			}
+
+			return updated;
+		},
+		callbackHandlerBlog: function (data, $target, $source, slug) {
+			var updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+
+			if (updated && updated.classes && updated.classes.add && updated.classes.add.indexOf('et_pb_blog_show_content') !== -1) {
+				et_reinit_waypoint_modules();
+			}
+		},
+		callbackHandlerTestimonial: function (data, $target, $source, slug) {
+			if (!$source.hasClass('et_pb_testimonial_description_inner')) {
+				return et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+			}
+
+			$.each($target.find('.et_pb_testimonial_author').prevAll(), function () {
+				$(this).remove();
+			});
+
+			$target.find('.et_pb_testimonial_author').before($(data.content));
+
+			if (!$source.hasClass('et_multi_view_swapped')) {
+				$source.addClass('et_multi_view_swapped');
+			}
+		},
+		callbackHandlerWooCommerceBreadcrumb: function(data, $target, $source, slug) {
+			if (data.content) {
+				return et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+			}
+			if (data.attrs && data.attrs.hasOwnProperty('href')) {
+				var hrefValue = data.attrs['href'];
+				return et_multi_view.updateAttrs({href: hrefValue}, $target, $source);
+			}
+		},
+		callbackHandlerWooCommerceTabs: function(data, $target, $source, slug) {
+			var updated = et_multi_view.callbackHandlerDefault(data, $target, $source, slug + '__faked');
+
+			if (updated && updated.attrs && updated.attrs.hasOwnProperty('data-include_tabs')) {
+				// Show only the enabled Tabs i.e. Hide all tabs and show as required.
+				$target.find('li').hide();
+				$target.find('li').removeClass('et_pb_tab_active');
+
+				var tabClasses = [];
+				var include_tabs = updated.attrs['data-include_tabs'].split('|');
+				include_tabs.forEach(function(elem) {
+					if ('' === elem.trim()) {
+						return;
+					}
+					tabClasses.push(elem + '_tab');
+				});
+
+				tabClasses.forEach(function(elemClass, idx) {
+					if (0 === idx) {
+						$('.' + elemClass).addClass('et_pb_tab_active');
+					}
+					$('.' + elemClass).show();
+				});
+			}
+		},
+		getCallbackHandlerCustom: function (slug) {
+			switch (slug) {
+				case 'et_pb_counter':
+					return et_multi_view.callbackHandlerCounter;
+
+				case 'et_pb_number_counter':
+					return et_multi_view.callbackHandlerNumberCounter;
+
+				case 'et_pb_circle_counter':
+					return et_multi_view.callbackHandlerCircleCounter;
+
+				case 'et_pb_slider':
+				case 'et_pb_fullwidth_slider':
+					return et_multi_view.callbackHandlerSlider;
+
+				case 'et_pb_post_slider':
+				case 'et_pb_fullwidth_post_slider':
+					return et_multi_view.callbackHandlerPostSlider;
+
+				case 'et_pb_video_slider':
+					return et_multi_view.callbackHandlerVideoSlider;
+
+				case 'et_pb_slide':
+					return et_multi_view.callbackHandlerSliderItem;
+
+				case 'et_pb_video':
+					return et_multi_view.callbackHandlerVideo;
+
+				case 'et_pb_blog':
+					return et_multi_view.callbackHandlerBlog;
+
+				case 'et_pb_testimonial':
+					return et_multi_view.callbackHandlerTestimonial;
+
+				case 'et_pb_wc_breadcrumb':
+					return et_multi_view.callbackHandlerWooCommerceBreadcrumb;
+				case 'et_pb_wc_tabs':
+					return et_multi_view.callbackHandlerWooCommerceTabs;
+
+				default:
+					return false;
+			}
+		},
+		updateContent: function (content, $target, $source) {
+			if (typeof content === 'undefined') {
+				return false;
+			}
+
+			var updated = false;
+
+			if ($target.html() !== content) {
+				$target.empty().html(content);
+				updated = true;
+			}
+
+			if (updated && !$source.hasClass('et_multi_view_swapped')) {
+				$source.addClass('et_multi_view_swapped');
+			}
+
+			return updated;
+		},
+		updateAttrs: function (attrs, $target, $source) {
+			if (!attrs) {
+				return false;
+			}
+
+			var updated = {};
+
+			$.each(attrs, function (key, value) {
+				switch (key) {
+					case 'class':
+						// Do nothing, use classes data contexts and updateClasses method instead.
+						break;
+
+					case 'style':
+						// Do nothing, use styles data contexts and updateStyles method instead.
+						break;
+
+					default:
+						if ($target.attr(key) !== value) {
+							$target.attr(key, value);
+
+							if (key.indexOf('data-') === 0) {
+								$target.data(key.replace('data-', ''), value);
+							}
+
+							if ('src' === key) {
+								if (value) {
+									$target.removeClass('et_multi_view_hidden_image');
+								} else {
+									$target.addClass('et_multi_view_hidden_image');
+								}
+							}
+
+							updated[key] = value;
+						}
+						break;
+				}
+			});
+
+			if (et_multi_view.isEmptyObject(updated)) {
+				return false;
+			}
+
+			if (!$source.hasClass('et_multi_view_swapped')) {
+				$source.addClass('et_multi_view_swapped');
+			}
+
+			return updated;
+		},
+		updateStyles: function (styles, $target, $source) {
+			if (!styles) {
+				return false;
+			}
+
+			var updated = {};
+
+			$.each(styles, function (key, value) {
+				if ($target.css(key) !== value) {
+					$target.css(key, value);
+					updated[key] = value;
+				}
+			});
+
+			if (et_multi_view.isEmptyObject(updated)) {
+				return false;
+			}
+
+			if (!$source.hasClass('et_multi_view_swapped')) {
+				$source.addClass('et_multi_view_swapped');
+			}
+
+			return updated;
+		},
+		updateClasses: function (classes, $target, $source) {
+			if (!classes) {
+				return false;
+			}
+
+			var updated = {};
+
+			// Add CSS class
+			if (classes.add) {
+				for (var i = 0; i < classes.add.length; i++) {
+					if (!$target.hasClass(classes.add[i])) {
+						$target.addClass(classes.add[i]);
+
+						if (!updated.hasOwnProperty('add')) {
+							updated.add = [];
+						}
+						updated.add.push(classes.add[i]);
+					}
+				}
+			}
+
+			// Remove CSS class
+			if (classes.remove) {
+				for (var i = 0; i < classes.remove.length; i++) {
+					if ($target.hasClass(classes.remove[i])) {
+						$target.removeClass(classes.remove[i]);
+
+						if (!updated.hasOwnProperty('remove')) {
+							updated.remove = [];
+						}
+						updated.remove.push(classes.remove[i]);
+					}
+				}
+			}
+
+			if (et_multi_view.isEmptyObject(updated)) {
+				return false;
+			}
+
+			if (!$source.hasClass('et_multi_view_swapped')) {
+				$source.addClass('et_multi_view_swapped');
+			}
+
+			return updated;
+		},
+		updateVisibility: function (isVisible, $target, $source) {
+			var updated = {};
+
+			if (isVisible && $target.hasClass('et_multi_view_hidden')) {
+				$target.removeClass('et_multi_view_hidden');
+				updated.isVisible = true;
+			}
+
+			if (!isVisible && !$target.hasClass('et_multi_view_hidden')) {
+				$target.addClass('et_multi_view_hidden');
+				updated.isHidden = true;
+			}
+
+			if (et_multi_view.isEmptyObject(updated)) {
+				return false;
+			}
+
+			if (!$source.hasClass('et_multi_view_swapped')) {
+				$source.addClass('et_multi_view_swapped');
+			}
+
+			return updated;
+		},
+		isEmptyObject: function (obj) {
+			if (!obj) {
+				return true;
+			}
+
+			var isEmpty = true;
+
+			for (var key in obj) {
+				if (obj.hasOwnProperty(key)) {
+					isEmpty = false;
+				}
+			}
+
+			return isEmpty;
+		},
+		tryParseJSON: function (string) {
+			try {
+				return JSON.parse(string);
+			} catch (e) {
+				return false;
+			}
+		},
+		getScreenMode: function () {
+			var screenMode;
+
+			if (et_multi_view.windowWidth > 980) {
+				screenMode = 'desktop';
+			} else if (et_multi_view.windowWidth > 767) {
+				screenMode = 'tablet';
+			} else {
+				screenMode = 'phone';
+			}
+
+			return screenMode;
+		},
+	};
+
+	if (!isBuilder) {
+		$(document).ready(et_multi_view.init);
+
+		var et_multi_view_timer = null;
+		$(window).on('resize', function () {
+			// Make sure only to run this when the actual window size width is changed
+			var resizedWindowWidth = $(window).width();
+
+			if (resizedWindowWidth === et_multi_view.windowWidth) {
+				return;
+			}
+
+			et_multi_view.windowWidth = resizedWindowWidth;
+
+			clearTimeout(et_multi_view_timer);
+
+			et_multi_view_timer = setTimeout(et_multi_view.init, 300);
+		});
+	}
+
+	if (isBuilder) {
+		$(document).ready(function () {
+			$(document).on('submit', '.et-fb-root-ancestor-sibling form', function (event) {
+				event.preventDefault();
+			});
+
+			$(document).on('click', '.et-fb-root-ancestor-sibling a, .et-fb-root-ancestor-sibling button, .et-fb-root-ancestor-sibling input[type="submit"]', function (event) {
+				event.preventDefault();
+			});
+		});
+	}
+
+	// Initialize and render the WooCommerce Reviews rating stars
+	// This needed for product reviews dynamic content
+	// @see https://github.com/woocommerce/woocommerce/blob/master/assets/js/frontend/single-product.js#L47
+	window.etInitWooReviewsRatingStars = function () {
+		$('select[name="rating"]').each(function () {
+			$(this).prev('.stars').remove();
+			$(this)
+				.hide()
+				.before(
+					'<p class="stars">\
+						<span>\
+							<a class="star-1" href="#">1</a>\
+							<a class="star-2" href="#">2</a>\
+							<a class="star-3" href="#">3</a>\
+							<a class="star-4" href="#">4</a>\
+							<a class="star-5" href="#">5</a>\
+						</span>\
+					</p>'
+				);
+		});
+	}
 })(jQuery);
