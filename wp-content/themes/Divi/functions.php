@@ -7193,3 +7193,8 @@ function et_divi_disable_theme_builder_header_footer_on_blank_template( $layouts
 	return $layouts;
 }
 add_filter( 'et_theme_builder_template_layouts', 'et_divi_disable_theme_builder_header_footer_on_blank_template' );
+
+function disable_woo_commerce_sidebar() {
+	remove_action( 'woocommerce_sidebar', 'woocommerce_get_sidebar', 10); 
+}
+add_action('init', 'disable_woo_commerce_sidebar');
